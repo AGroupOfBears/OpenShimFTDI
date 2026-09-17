@@ -212,8 +212,9 @@ int main(void)
     }
     handle = NULL;
 
-    if (!expect_ok("FT_OpenEx(description)",
-                   open_ex("OpenPort 2.0 FTDI Bridge", FT_OPEN_BY_DESCRIPTION,
+    if (!expect_ok("FT_OpenEx(TuneECU description flags)",
+                   open_ex("OpenPort 2.0 FTDI Bridge",
+                           FT_LIST_BY_INDEX | FT_OPEN_BY_DESCRIPTION,
                            &handle)) || handle == NULL ||
         !expect_ok("FT_Close(after OpenEx)", close_device(handle))) {
         goto cleanup;

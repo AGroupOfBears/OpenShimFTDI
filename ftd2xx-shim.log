@@ -1,0 +1,26 @@
+[2026-09-18 08:53:44.716] [tick=0069844385] [tid=284] FT_CreateDeviceInfoList(count_out=0032FE68) -> status=0, count=1
+[2026-09-18 08:53:44.716] [tick=0069844385] [tid=284] FT_ListDevices(arg1=0032FE68, arg2=00000000, flags=0x80000000, mode=number-only, kind=description, index=0) -> status=0
+[2026-09-18 08:53:44.716] [tick=0069844385] [tid=284] FT_ListDevices(arg1=00000000, arg2=0032FE8C, flags=0x40000002, mode=by-index, kind=description, index=0) -> status=0
+[2026-09-18 08:53:44.716] [tick=0069844385] [tid=284] FT_Open(device=0, handle_out=0032FE64) -> status=0, handle=F7D20001
+[2026-09-18 08:53:44.717] [tick=0069844385] [tid=284] FT_SetBaudRate(handle=F7D20001, baud=360) -> status=0
+[2026-09-18 08:53:44.717] [tick=0069844385] [tid=284] FT_SetDataCharacteristics(handle=F7D20001, word_length=8, stop_bits=0, parity=0) -> status=0
+[2026-09-18 08:53:44.717] [tick=0069844385] [tid=284] FT_SetFlowControl(handle=F7D20001, flow=0x0000, xon=0x11, xoff=0x13) -> status=0
+[2026-09-18 08:53:44.717] [tick=0069844385] [tid=284] FT_SetDtr(handle=F7D20001) -> status=0, dtr=1
+[2026-09-18 08:53:44.717] [tick=0069844385] [tid=284] FT_ClrDtr(handle=F7D20001) -> status=0, dtr=0
+[2026-09-18 08:53:44.717] [tick=0069844385] [tid=284] FT_SetRts(handle=F7D20001) -> status=0, rts=1
+[2026-09-18 08:53:44.717] [tick=0069844385] [tid=284] FT_ClrRts(handle=F7D20001) -> status=0, rts=0
+[2026-09-18 08:53:44.717] [tick=0069844385] [tid=284] FT_SetTimeouts(handle=F7D20001, read_ms=150, write_ms=150) -> status=0
+[2026-09-18 08:53:44.717] [tick=0069844385] [tid=284] FT_SetBreakOn(handle=F7D20001) -> status=0, break=on
+[2026-09-18 08:53:44.717] [tick=0069844385] [tid=284] FT_SetBreakOff(handle=F7D20001) -> status=0, break=off
+[2026-09-18 08:53:44.717] [tick=0069844385] [tid=284] FT_SetLatencyTimer(handle=F7D20001, latency_ms=4) -> status=0
+[2026-09-18 08:53:44.717] [tick=0069844385] [tid=284] FT_SetUSBParameters(handle=F7D20001, in_size=128, out_size=0) -> status=0
+[2026-09-18 08:53:44.717] [tick=0069844385] [tid=284] FT_SetEventNotification(handle=F7D20001, mask=0x00000001, event=00000048) -> status=0
+[2026-09-18 08:53:44.717] [tick=0069844385] [tid=284] FT_Write(handle=F7D20001, buffer=0032FE82, requested=5) -> status=0, actual=5, data=81 12 F1 81 05
+[2026-09-18 08:53:44.717] [tick=0069844385] [tid=284] FT_GetStatus(handle=F7D20001, rx_out=0032FE74, tx_out=0032FE78, event_out=0032FE7C) -> status=0, rx=5, tx=0, events=0x00000001
+[2026-09-18 08:53:44.717] [tick=0069844385] [tid=284] FT_Read(handle=F7D20001, buffer=0032FE87, requested=5) -> status=0, actual=5, data=81 12 F1 81 05
+[2026-09-18 08:53:44.717] [tick=0069844385] [tid=284] FT_Write(handle=F7D20001, buffer=0032FE82, requested=5) -> status=0, actual=5, data=81 12 F1 81 05
+[2026-09-18 08:53:44.717] [tick=0069844385] [tid=284] FT_Purge(handle=F7D20001, mask=0x00000003) -> status=0, cleared_rx=5, cleared_tx=0
+[2026-09-18 08:53:44.717] [tick=0069844385] [tid=284] FT_GetStatus(handle=F7D20001, rx_out=0032FE74, tx_out=0032FE78, event_out=0032FE7C) -> status=0, rx=0, tx=0, events=0x00000000
+[2026-09-18 08:53:44.717] [tick=0069844386] [tid=284] FT_Close(handle=F7D20001) -> status=0 (state reset)
+[2026-09-18 08:53:44.717] [tick=0069844386] [tid=284] FT_OpenEx(arg=00405247, flags=0x40000002, open_flags=0x00000002, selector=description, value=OpenPort 2.0 FTDI Bridge, handle_out=0032FE64) -> status=0, handle=F7D20001
+[2026-09-18 08:53:44.717] [tick=0069844386] [tid=284] FT_Close(handle=F7D20001) -> status=0 (state reset)

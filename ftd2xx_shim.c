@@ -6,7 +6,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#define SHIM_VERSION "0.1"
+#define SHIM_VERSION "0.1.1"
 #define FAKE_DESCRIPTION "OpenPort 2.0 FTDI Bridge"
 #define FAKE_SERIAL "OP20SHIM01"
 #define FAKE_HANDLE_VALUE ((uintptr_t)0xF7D20001UL)
@@ -324,16 +324,24 @@ FT_STATUS WINAPI FT_OpenEx(PVOID pvArg1, DWORD dwFlags, FT_HANDLE *pHandle)
     const char *selector = "index";
     const char *text = NULL;
     BOOL matches = FALSE;
+    DWORD open_flags = dwFlags & (FT_OPEN_BY_SERIAL_NUMBER |
+                                  FT_OPEN_BY_DESCRIPTION |
+                                  FT_OPEN_BY_LOCATION);
 
-    if (dwFlags == FT_OPEN_BY_DESCRIPTION) {
+    /*
+     * TuneECU 2.5.5 passes FT_LIST_BY_INDEX through to FT_OpenEx, producing
+     * 0x40000002 for a description open. Real D2XX tolerates that legacy
+     * combination, so only inspect the low FT_OPEN_BY_* selector bits here.
+     */
+    if (open_flags == FT_OPEN_BY_DESCRIPTION) {
         selector = "description";
         text = (const char *)pvArg1;
         matches = text != NULL && strcmp(text, FAKE_DESCRIPTION) == 0;
-    } else if (dwFlags == FT_OPEN_BY_SERIAL_NUMBER) {
+    } else if (open_flags == FT_OPEN_BY_SERIAL_NUMBER) {
         selector = "serial";
         text = (const char *)pvArg1;
         matches = text != NULL && strcmp(text, FAKE_SERIAL) == 0;
-    } else if (dwFlags == FT_OPEN_BY_LOCATION) {
+    } else if (open_flags == FT_OPEN_BY_LOCATION) {
         selector = "location";
         matches = (uintptr_t)pvArg1 == 0U;
     } else {
@@ -354,8 +362,8 @@ FT_STATUS WINAPI FT_OpenEx(PVOID pvArg1, DWORD dwFlags, FT_HANDLE *pHandle)
     }
     LeaveCriticalSection(&g_state_lock);
 
-    log_message("FT_OpenEx(arg=%p, flags=0x%08lX, selector=%s, value=%s, handle_out=%p) -> status=%lu, handle=%p",
-                pvArg1, (unsigned long)dwFlags, selector,
+    log_message("FT_OpenEx(arg=%p, flags=0x%08lX, open_flags=0x%08lX, selector=%s, value=%s, handle_out=%p) -> status=%lu, handle=%p",
+                pvArg1, (unsigned long)dwFlags, (unsigned long)open_flags, selector,
                 text != NULL ? text : "<non-string>", (void *)pHandle,
                 (unsigned long)status, result);
     return status;

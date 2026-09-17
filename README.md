@@ -1,6 +1,12 @@
-# TuneECU FTD2XX fake-device shim v0.1
+# TuneECU FTD2XX shim v0.1.1
 
-This is a 32-bit Windows `FTD2XX.dll` diagnostic shim for TuneECU 2.5.5 under
+## Preamble
+
+Because TuneECU on Windows became unsupported a long time ago, and because I unsupported windows a long time ago, this needed to be made so I could diagnose my bike without having to buy another FTDI/K-CAN adaptor, instead using my OpenPort2 adaptor.
+
+Also, Since when did Alain Fontain decide to put the stock maps behind a paywall?
+
+This is a 32-bit Windows `FTD2XX.dll` diagnostic shim for TuneECU 2.5.5/2.5.8 under
 Wine. It exposes exactly the D2XX entry points found in TuneECU's P/Invoke
 declarations and reports one device named:
 
@@ -8,7 +14,7 @@ declarations and reports one device named:
 OpenPort 2.0 FTDI Bridge
 ```
 
-Version 0.1 has **no Tactrix/OpenPort backend and no ECU write functionality**.
+Version 0.1.1 has **no Tactrix/OpenPort backend and no ECU write functionality**.
 It only supports device discovery/opening, accepts configuration calls, logs
 calls, and loops bytes written with `FT_Write` back into a local RX FIFO. The
 looped-back bytes signal a caller-supplied `FT_EVENT_RXCHAR` Win32 event. This
@@ -26,9 +32,11 @@ K-line protocol emulator and will not establish a real ECU session.
 - `FT_SetEventNotification`, `FT_SetLatencyTimer`, `FT_SetUSBParameters`
 
 `FT_ListDevices` supports D2XX number-only, by-index description/serial, and
-list-all forms. The fake serial is `OP20SHIM01`.
+list-all forms. The fake serial is `OP20SHIM01`. `FT_OpenEx` accepts the
+`0x40000002` legacy flag combination used by TuneECU 2.5.5 (description mode
+with `FT_LIST_BY_INDEX` retained).
 
-## Build on CachyOS / Arch Linux
+## Build on Arch Linux
 
 Install the 32-bit MinGW-w64 cross compiler:
 
@@ -60,9 +68,8 @@ purge, and close.
 
 ## Use with TuneECU under Wine
 
-1. Keep a backup of any real/official `FTD2XX.dll` already beside TuneECU.
-2. Copy this `FTD2XX.dll` into the same directory as `TuneECU.exe`.
-3. Start TuneECU with the native DLL override:
+1. Copy this `FTD2XX.dll` into the same directory as `TuneECU.exe`.
+2. Start TuneECU with the native DLL override:
 
    ```bash
    WINEDLLOVERRIDES="ftd2xx=n" wine ./TuneECU.exe
@@ -92,4 +99,4 @@ entirely synthetic and all traffic stays in process memory.
 - Close: resets all device, FIFO, configuration, and event state.
 
 This code intentionally contains no J2534, USB, Tactrix, K-line, or ECU-flash
-implementation.
+implementation yet.
