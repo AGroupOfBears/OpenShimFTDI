@@ -156,10 +156,20 @@ int main(int argc, char *argv[])
     PASSTHRU_MSG maskMsg = {0};
     PASSTHRU_MSG patternMsg = {0};
     maskMsg.ProtocolID = 4;
+    maskMsg.DataSize = 1;
+    maskMsg.Data[0] = 0x00;
     patternMsg.ProtocolID = 4;
+    patternMsg.DataSize = 1;
+    patternMsg.Data[0] = 0x00;
     unsigned long filter_id = 0;
     rc = pStartFilter(ch_verify, PASS_FILTER, &maskMsg, &patternMsg, NULL, &filter_id);
     printf("PassThruStartMsgFilter -> %d (filter_id=%lu)\n", rc, filter_id);
+    if (rc != 0) {
+        char err[256] = {0};
+        pGetLastError(err);
+        printf("StartMsgFilter detail: %s\n", err);
+    }
+    assert(rc == 0);
 
     if (rc == 0 && pStopFilter) {
         int32_t stop_rc = pStopFilter(ch_verify, filter_id);
