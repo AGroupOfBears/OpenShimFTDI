@@ -1,0 +1,279 @@
+--- "/home/spoqn/Desktop/Source Codes/OpenShimFTDI/reference/j2534/tactrix/include/J2534.h"	2026-09-18 11:42:19.659658254 +1000
++++ "/home/spoqn/Desktop/Source Codes/OpenShimFTDI/reference/j2534/nikolakozina-j2534/j2534/j2534.h"	2026-09-18 11:16:32.603294720 +1000
+@@ -1,126 +1,162 @@
+-//////////////////////////////////////////////////////////////////////////////
+-//
+-// Copyright (C) 2004- Tactrix Inc.
+-//
+-// You are free to use this file for any purpose, but please keep
+-// notice of where it came from!
+-//
+-//////////////////////////////////////////////////////////////////////////////
+-
+-#pragma once
++/*
++  Copyright (C) 2022
++  Authors: NikolaKozina
++            Dale Schultz
++
++  You are free to use this software for any purpose, but please keep
++  acknowledge where it came from!
++
++  On Windows, this shared library is compiled with the OP2J2534_EXPORTS
++  symbol defined on the command line. This symbol should not be defined on any project
++  that uses this DLL.  This way any other project whose source files include this file see
++  OP2J2534_API functions as being imported from a DLL, whereas this DLL sees symbols
++  defined with this macro as being exported.
++
++ */
++
++#ifndef OP2J2534_H
++    #define OP2J2534_H
++
++const char *DLL_VERSION = "3.0.0";
++const char *API_VERSION = "04.04";
++
++#define PM_DATA_LEN	4128 // Maixmum length of data in a PASSTHRU_MSG
++
++#ifdef _MSC_VER
++  #ifdef OP2J2534_EXPORTS
++    #define OP2J2534_API __declspec(dllexport)
++  #else
++    #define OP2J2534_API __declspec(dllimport)
++  #endif
++#else
++  #define OP2J2534_API
++#endif
+ 
+-#if defined(_WIN32) || defined(WIN32) || defined (_WIN64) || defined (WIN64)
+-#include <windows.h>
++#ifndef FALSE
++    #define FALSE 0
++#endif
++#ifndef TRUE
++    #define TRUE 1
+ #endif
+ 
+-#include "j2534_tactrix.h"
++#ifdef __cplusplus
++extern "C" {  // only need to export C interface if
++              // used by C++ source code
++#endif
+ 
+-#define PTfn(name) PF_##name* pf##name
+-#define PText(name) PT_API PF_##name name
++#include <stdint.h>
+ 
+-#define DBGPRINT(args_in_parens)                                \
+-    {                                               \
+-		if (debugMode)	\
+-			dbgprint args_in_parens; \
+-    }
+-
+-#define DBGDUMP(args_in_parens)                                \
+-    {                                               \
+-		if (debugMode)	\
+-			dbgdump args_in_parens; \
+-    }
+-
+-#define DBGPRINTPT(args_in_parens)                                \
+-    {                                               \
+-		if (debugMode)	\
+-			dbgprintptmsg args_in_parens; \
+-    }
++enum j2534_error {
++    J2534_NOERROR,
++    J2534_ERR_NOT_SUPPORTED,
++    J2534_ERR_INVALID_CHANNEL_ID,
++    J2534_ERR_INVALID_PROTOCOL_ID,
++    J2534_ERR_NULL_PARAMETER,
++    J2534_ERR_INVALID_IOCTL_VALUE,
++    J2534_ERR_INVALID_FLAGS,
++    J2534_ERR_FAILED,
++    J2534_ERR_DEVICE_NOT_CONNECTED,
++    J2534_ERR_TIMEOUT,
++    J2534_ERR_INVALID_MSG,
++    J2534_ERR_INVALID_TIME_INTERVAL,
++    J2534_ERR_EXCEEDED_LIMIT,
++    J2534_ERR_INVALID_MSG_ID,
++    J2534_ERR_DEVICE_IN_USE,
++    J2534_ERR_INVALID_IOCTL_ID,
++    J2534_ERR_BUFFER_EMPTY,
++    J2534_ERR_BUFFER_FULL,
++    J2534_ERR_BUFFER_OVERFLOW,
++    J2534_ERR_PIN_INVALID,
++    J2534_ERR_CHANNEL_IN_USE,
++    J2534_ERR_MSG_PROTOCOL_ID,
++    J2534_ERR_INVALID_FILTER_ID,
++    J2534_ERR_NO_FLOW_CONTROL,
++    J2534_ERR_NOT_UNIQUE,
++    J2534_ERR_INVALID_BAUDRATE,
++    J2534_ERR_INVALID_DEVICE_ID
++};
+ 
+-class J2534
+-{
+-public:
+-	J2534(void);
+-	~J2534(void);
+-	bool init() { return checkDLL(); };
+-	void setDllName(const char* name);
+-	bool valid();
+-	void debug(bool enable) { debugMode = enable; };
+-	char* getLastError();
+-
+-    long PassThruOpen(const void *pName, unsigned long *pDeviceID);
+-	long PassThruClose(unsigned long DeviceID);
+-	long PassThruConnect(unsigned long DeviceID, unsigned long ProtocolID, unsigned long Flags, unsigned long Baudrate, unsigned long *pChannelID);
+-	long PassThruDisconnect(unsigned long ChannelID);
+-	long PassThruReadMsgs(unsigned long ChannelID, PASSTHRU_MSG *pMsg, unsigned long *pNumMsgs, unsigned long Timeout);
+-    long PassThruWriteMsgs(unsigned long ChannelID, const PASSTHRU_MSG *pMsg, unsigned long *pNumMsgs, unsigned long Timeout);
+-    long PassThruStartPeriodicMsg(unsigned long ChannelID, const PASSTHRU_MSG *pMsg, unsigned long *pMsgID, unsigned long TimeInterval);
+-	long PassThruStopPeriodicMsg(unsigned long ChannelID, unsigned long MsgID);
+-	long PassThruStartMsgFilter(unsigned long ChannelID,
+-                          unsigned long FilterType, const PASSTHRU_MSG *pMaskMsg, const PASSTHRU_MSG *pPatternMsg,
+-                          const PASSTHRU_MSG *pFlowControlMsg, unsigned long *pMsgID);
+-	long PassThruStopMsgFilter(unsigned long ChannelID, unsigned long MsgID);
+-	long PassThruSetProgrammingVoltage(unsigned long DeviceID, unsigned long Pin, unsigned long Voltage);
+-	long PassThruReadVersion(char *pApiVersion,char *pDllVersion,char *pFirmwareVersion,unsigned long DeviceID);
+-	long PassThruGetLastError(char *pErrorDescription);
+-    long PassThruIoctl(unsigned long ChannelID, unsigned long IoctlID, const void *pInput, void *pOutput);
+-
+-
+-private:
+-	bool getPTfns();
+-    long LoadJ2534DLL(const char* szDLL);
+-	bool checkDLL();
+-    void dbgprint(const char* Format, ...);
+-    void dbgdump(const unsigned char *data,unsigned int datalen,int kind);
+-    void dbgprintptmsg(const PASSTHRU_MSG *pMsg,int kind);
+-	int is_valid_sconfig_param(SCONFIG s);
+-    void dump_sbyte_array(const SBYTE_ARRAY* s);
+-	void dump_sconfig_param(SCONFIG s);
+-
+-	char lastError[256];
+-	char dllName[256];
+-	bool debugMode;
+-	bool isLibraryInitialized;
++enum j2534_ioctl {
++    J2534_GET_CONFIG = 1,
++    J2534_SET_CONFIG,
++    J2534_READ_VBATT,
++    J2534_FIVE_BAUD_INIT,
++    J2534_FAST_INIT,
++    J2534_CLEAR_TX_BUFFER = 7,
++    J2534_CLEAR_RX_BUFFER,
++    J2534_CLEAR_PERIODIC_MSGS,
++    J2534_CLEAR_MSG_FILTERS,
++    J2534_CLEAR_FUNCT_MSG_LOOKUP_TABLE,
++    J2534_ADD_TO_FUNCT_MSG_LOOKUP_TABLE,
++    J2534_DELETE_FROM_FUNCT_MSG_LOOUP_TABLE,
++    J2534_READ_PROG_VOLTAGE
++};
+ 
++enum j2534_filter {
++    J2534_PASS_FILTER = 1,
++    J2534_BLOCK_FILTER,
++    J2534_FLOW_CONTROL_FILTER
++};
+ 
+-#if defined(_WIN32) || defined(WIN32) || defined (_WIN64) || defined (WIN64)
+-	HINSTANCE hDLL;               // Handle to DLL
+-#else
+-	void* hDLL;
+-#endif
++typedef struct _SCONFIG
++{
++    unsigned long Parameter;
++    unsigned long Value;
++} SCONFIG;
+ 
+-	/* J2534 Interface API function pointers */
++typedef struct _SCONFIG_LIST
++{
++    unsigned long NumOfParams;
++    SCONFIG *ConfigPtr;
++} SCONFIG_LIST;
+ 
+-	PTfn(PassThruOpen);
+-	PTfn(PassThruClose);
+-	PTfn(PassThruConnect);
+-	PTfn(PassThruDisconnect);
+-	PTfn(PassThruReadMsgs);
+-	PTfn(PassThruWriteMsgs);
+-	PTfn(PassThruStartPeriodicMsg);
+-	PTfn(PassThruStopPeriodicMsg);
+-	PTfn(PassThruStartMsgFilter);
+-	PTfn(PassThruStopMsgFilter);
+-	PTfn(PassThruSetProgrammingVoltage);
+-	PTfn(PassThruReadVersion);
+-	PTfn(PassThruGetLastError);
+-	PTfn(PassThruIoctl);
+-};
++typedef struct _PASSTHRU_MSG
++{
++    unsigned long ProtocolID;
++    unsigned long RxStatus;
++    unsigned long TxFlags;
++    unsigned long Timestamp;
++    unsigned long DataSize;
++    unsigned long ExtraDataIndex;
++    unsigned char Data[PM_DATA_LEN];
++} PASSTHRU_MSG;
++
++OP2J2534_API int32_t PassThruOpen(
++    const void *pName, unsigned long *pDeviceID);
++OP2J2534_API int32_t PassThruClose(
++    const unsigned long DeviceID);
++OP2J2534_API int32_t PassThruConnect(
++    const unsigned long DeviceID, const unsigned long ProtocolID, const unsigned long Flags,
++    const unsigned long Baudrate, unsigned long *pChannelID);
++OP2J2534_API int32_t PassThruDisconnect(
++    const unsigned long ChannelID);
++OP2J2534_API int32_t PassThruReadMsgs(
++    const unsigned long ChannelID, PASSTHRU_MSG *pMsg,
++    unsigned long *pNumMsgs, const unsigned long Timeout);
++OP2J2534_API int32_t PassThruWriteMsgs(
++    const unsigned long ChannelID, const PASSTHRU_MSG *pMsg,
++    unsigned long *pNumMsgs, const unsigned long Timeout);
++OP2J2534_API int32_t PassThruStartPeriodicMsg(
++    const unsigned long ChannelID, const PASSTHRU_MSG *pMsg,
++    const unsigned long *pMsgID, const unsigned long TimeInterval);
++OP2J2534_API int32_t PassThruStopPeriodicMsg(
++    const unsigned long ChannelID, const unsigned long MsgID);
++OP2J2534_API int32_t PassThruStartMsgFilter(
++    const unsigned long ChannelID, unsigned long FilterType,
++    const PASSTHRU_MSG *pMaskMsg, const PASSTHRU_MSG *pPatternMsg,
++    const PASSTHRU_MSG *pFlowControlMsg, unsigned long *pMsgID);
++OP2J2534_API int32_t PassThruStopMsgFilter(
++    const unsigned long ChannelID, const unsigned long MsgID);
++OP2J2534_API int32_t PassThruSetProgrammingVoltage(
++    const unsigned long DeviceID, const unsigned long Pin, const unsigned long Voltage);
++OP2J2534_API int32_t PassThruReadVersion(
++    const unsigned long DeviceID, char *pApiVersion, char *pDllVersion, char *pFirmwareVersion);
++OP2J2534_API int32_t PassThruGetLastError(
++    char *pErrorDescription);
++OP2J2534_API int32_t PassThruIoctl(
++    const unsigned long ChannelID, const unsigned long IoctlID, const void *pInput, void *pOutput);
+ 
+-#if defined(OP20PT32_USE_LIB)
+-	PT_API void OP20PT32_Start();
+-	PT_API void OP20PT32_Stop();
+-	PText(PassThruOpen);
+-	PText(PassThruClose);
+-	PText(PassThruConnect);
+-	PText(PassThruDisconnect);
+-	PText(PassThruReadMsgs);
+-	PText(PassThruWriteMsgs);
+-	PText(PassThruStartPeriodicMsg);
+-	PText(PassThruStopPeriodicMsg);
+-	PText(PassThruStartMsgFilter);
+-	PText(PassThruStopMsgFilter);
+-	PText(PassThruSetProgrammingVoltage);
+-	PText(PassThruReadVersion);
+-	PText(PassThruGetLastError);
+-	PText(PassThruIoctl);
++#ifdef __cplusplus
++}
+ #endif
++#endif  // OP2J2534_H

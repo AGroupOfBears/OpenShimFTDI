@@ -1,0 +1,4 @@
+/Users/macrunner/Desktop/Source Codes/ShimECU/Windows TuneECU (version 2.5.5, 2012)/TuneECUv2.5.5/TuneECU 2.5.5 Clean/TuneLibrary/bin/Debug/TuneLibrary.pdb
+/Users/macrunner/Desktop/Source Codes/ShimECU/Windows TuneECU (version 2.5.5, 2012)/TuneECUv2.5.5/TuneECU 2.5.5 Clean/TuneLibrary/bin/Debug/TuneLibrary.dll
+/Users/macrunner/Desktop/Source Codes/ShimECU/Windows TuneECU (version 2.5.5, 2012)/TuneECUv2.5.5/TuneECU 2.5.5 Clean/TuneLibrary/obj/Debug/TuneLibrary.dll
+/Users/macrunner/Desktop/Source Codes/ShimECU/Windows TuneECU (version 2.5.5, 2012)/TuneECUv2.5.5/TuneECU 2.5.5 Clean/TuneLibrary/obj/Debug/TuneLibrary.pdb

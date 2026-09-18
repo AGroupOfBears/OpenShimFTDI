@@ -1,0 +1,100 @@
+type = obd
+protocolid = 6 ; ISO15765
+mode23txaddrwidth = 4		; mode23 req format info
+mode23txlenwidth = 1		; mode23 req format info	
+mode23rxaddrwidth = 0		; mode23 req format info
+mode23uds = 1			; lets OBD channels know you are using mode23 UDS
+sortpids = 1			; sort these PIDs by value to potentially make for fewer requests (=faster)
+calcsampinterval = 1000		; timing parameter - leave as is - will make default for release version
+
+; here are some known RAM addresses for ROM ZA1JA00C
+; addresses are likely different for other ROMs
+; you can comment out ones you don't need, but keep in mind that with
+; the block read nature of UDS, reading extra parameters that have
+; adjacent addresses comes at very little bandwidth (=sample rate) cost
+
+paramname = load
+paramid = 0xFFF8DB6C
+isfloat = 1
+
+paramname = cool_temp
+paramid = 0xFFF8DB70
+isfloat = 1
+
+paramname = STFT
+paramid = 0xFFF8DB74
+isfloat = 1
+
+paramname = LTFT
+paramid = 0xFFF8DB78
+isfloat = 1
+
+paramname = MAP
+paramid = 0xFFF8DB7C
+isfloat = 1
+
+paramname = RPM				
+paramid = 0xFFF8DB80				
+isfloat = 1				
+
+paramname = speed
+paramid = 0xFFF8DB84
+isfloat = 1
+
+paramname = advance
+paramid = 0xFFF8DB88
+isfloat = 1
+
+paramname = IAT
+paramid = 0xFFF8DB8C
+isfloat = 1
+
+paramname = MAF			
+paramid = 0xFFF8DB90				
+isfloat = 1				
+
+paramname = TPS				
+paramid = 0xFFF8DB94				
+isfloat = 1				
+
+paramname = fuel_press				
+paramid = 0xFFF8DBA0
+isfloat = 1				
+
+paramname = lambda
+paramid = 0xFFF8DBA4
+isfloat = 1
+
+paramname = O2_volt
+paramid = 0xFFF8DBA8
+isfloat = 1
+
+paramname = evap
+paramid = 0xFFF8DBAC
+isfloat = 1
+
+paramname = fuel_level
+paramid = 0xFFF8DBB0
+isfloat = 1
+
+paramname = amb_press
+paramid = 0xFFF8DBB4
+isfloat = 1
+
+paramname = O2_curr
+paramid = 0xFFF8DBB8
+isfloat = 1
+
+paramname = cat_temp
+paramid = 0xFFF8DBBC
+isfloat = 1
+
+paramname = ECU_volt
+paramid = 0xFFF8DBC0
+isfloat = 1
+
+paramname = abs_load
+paramid = 0xFFF8DBC4
+isfloat = 1
+
+

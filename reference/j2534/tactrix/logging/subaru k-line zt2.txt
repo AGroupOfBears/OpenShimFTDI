@@ -1,0 +1,83 @@
+; sample logging configuration file for openport 2.0
+; must be named logcfg.txt and be placed in the root directory of the
+; microSD card inserted in the openport in order to work
+
+; this sample logs using the SSM protocol over the K-line, which works
+; for both CAN-based and older Subarus
+
+; this particular example is simplified to show the use of Subaru K-line logging
+; along with the serial output of the Zeitronix ZT-2 (which is RS-232)
+; this device can be connected by wiring the RS-232 TX and ground signals to the 
+; ring and sleeve terminals of a 3/32" stereo plug which can then be plugged into
+; the OP2.
+
+;----------------ssm----------------
+type=ssmk				
+
+; just logging one parameter here - look at the other Subaru examples to see how to do more
+paramname = RPM				
+paramid = 0x0E				
+databits = 16				
+scalingrpn = x,0.25,*	
+
+;----------------zt2----------------
+; the "zt2" channel type can listen on any protocol for incoming numeric text
+; the default protocolid is 9, which corresponds to the 3/32" jack receive-only serial port
+; the default baud rate and setting are 9600,N,8,1. all of these can be changed for other scenarios
+
+; the zt2 channel looks for a specific header sequence (0,1,2) and then begins parsing the incoming
+; bytes that follow. paramid in this case specifies which byte in the sequence the parameter starts at.
+; we have defined all the known ZT-2 parameters here for both the 14 and 16-byte protocols, so you 
+; should not need to add anything more. you can comment out parameters you do not need if you choose,
+; but do not change the order of the active parameters
+;
+; uncomment the section below to use this
+
+type=zt2
+
+paramname = AFR
+paramid = 4
+databits = 8
+scalingrpn = x,0.1,*
+
+paramname = EGT
+paramid = 5
+databits = 16
+; (no scaling needed for celsius)
+
+paramname = RPM2
+paramid = 7
+databits = 16
+; the value from the ZT2 is basically a timing pulse interval
+; Cm = num cyl / 2
+; RPM = 60 * 38400 / (Cm * RPMdata)
+; so for 4cyl, RPM = 1152000 / RPMdata
+scalingrpn = 1152000,x,/
+
+paramname = MAP
+paramid = 9
+databits = 16
+issignmagnitude = 1
+; MAP units are PSI for positive values, inHg for negative
+; note that signed integers for the ZT-2 are unusual in that the
+; MSB is considered a sign bit instead of using two's complement
+scalingrpn = x,0.1,*
+
+paramname = TPS
+paramid = 11
+databits = 8
+; (no scaling needed for % throttle)
+
+paramname = USER1
+paramid = 12
+databits = 8
+scalingrpn = x,0.0196078,* ; convert 0-255 to 0-5V
+
+; below are present only in the 17-byte ZT-2 2010+ models
+
+paramname = USER2
+paramid = 15
+databits = 16
+issignmagnitude = 1
+; (scaling would be use dependent)
+

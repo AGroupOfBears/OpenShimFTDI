@@ -1,0 +1,17 @@
+namespace TuneECU
+{
+
+public enum eMessage
+{
+	ERR_NULL,
+	ERR_TIMEOUT,
+	ERR_UNKNOW_MAP,
+	ERR_VERSION_MAP,
+	ERR_AUTHENTIFY,
+	ERR_NO_SEED,
+	ERR_ABORT,
+	ERR_FAILED,
+	END_DOWNLOAD,
+	END_DIAG
+}
+}

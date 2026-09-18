@@ -1,0 +1,62 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+<resheader name="resmimetype"><value>text/microsoft-resx</value></resheader><resheader name="version"><value>1.3</value></resheader><resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader><resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader><data name="textBoxDescription.Text" xml:space="preserve"><value>{\rtf1\ansi\ansicpg1252\deff0\deflang1036{\fonttbl{\f0\fswiss\fprq2\fcharset0 Tahoma;}{\f1\fswiss\fcharset0 Arial;}}
+{\*\generator Msftedit 5.41.15.1507;}\viewkind4\uc1\pard\b\f0\fs18 Contrat de licence du logiciel\b0\par
+\par
+Ceci est un contrat l\'e9gal entre vous, l'utilisateur final, et l'auteur du logiciel. Si vous installez/utilisez le logiciel, vous \'eates dans l'obligation d'approuver les conditions d\'e9crites dans ce document.\par
+\par
+\b Logiciel\b0\par
+\par
+Le terme \'ab logiciel \'bb couvre le logiciel et la documentation qui le concerne.\par
+\par
+Ce logiciel peut-\'eatre librement distribu\'e9, \'e0 condition que :\par
+(a) Cette distribution ne concerne que l'archive d'origine fournie par l'auteur. Vous ne pouvez alt\'e9rer, supprimer ni ajouter aucun fichier dans l'archive distribu\'e9e ou modifier ce logiciel d'une quelconque fa\'e7on.\par
+(b) La personne recevant ce logiciel ne d\'e9bourse pas d'argent.\par
+\par
+\b Limitation d'utilisation\b0\par
+\par
+La modification de la cartographie ou l'utilisation de cartographie non pr\'e9vue pour la France est strictement interdite sur route. L'utilisation de ce logiciel est r\'e9serv\'e9e exclusivement \'e0 un usage piste.\par
+\par
+\b Limitation de garantie\b0\par
+\par
+Le Logiciel est d\'e9livr\'e9 "tel quel" sans garantie d'aucune sorte explicite ou implicite. En particulier, l'auteur ne garantit pas que l'ex\'e9cution du programme sera ininterrompue ou d\'e9pourvue d'erreur. L'auteur ne fournit aucune garantie et ne supporte aucune responsabilit\'e9 quant \'e0 l'utilisation, ou les cons\'e9quences de l'utilisation du Logiciel en termes de fiabilit\'e9, d'exactitude ou autre. Vous assumez totalement les risques provenant de l'utilisation du Logiciel.\par
+\par
+\b Limitation de responsabilit\'e9\b0\par
+\par
+\b Utilisez ce logiciel \'e0 vos risques!\b0  En aucun cas l'auteur ou quiconque ayant \'e9t\'e9 impliqu\'e9 dans la cr\'e9ation, la production, ou la livraison du logiciel ne saurait \'eatre tenu responsable de tous dommages directs ou indirects, cons\'e9cutifs \'e0 l'utilisation ou \'e0 votre incapacit\'e9 \'e0 utiliser le logiciel et, notamment de toutes pertes de profits ou manques \'e0 gagner, perte d'information, d\'e9faillance d'ordinateur, interruption de travail ou autres d\'e9g\'e2ts, et cela quand bien m\'eame l'auteur aurait \'e9t\'e9 inform\'e9 de la possibilit\'e9 de tels dommages.\par
+\par
+\b Assistance Technique\b0\par
+\par
+Cette licence ne garantie aucune assistance technique ou correction des erreurs du Logiciel TuneECU. L'Utilisateur comprend que le Logiciel TuneECU n'est pas un "Gratuiciel" pour lequel vous pouvez en attendre un support technique. Les informations \'e0 propos de l'utilisation du Logiciel TuneECU sont disponibles depuis le site http://tuneecu.com ou sur les forums r\'e9f\'e9renc\'e9s sur le site.\par
+\par
+\f1\fs20\par
+}
+ </value></data>
+  </root>

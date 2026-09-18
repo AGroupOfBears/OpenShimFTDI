@@ -4,3 +4,9 @@ Thumbs.db
 *.log
 *.exe
 *.dll
+# Native J2534 reference build artifacts
+reference/j2534/nikolakozina-j2534/j2534/*.o
+reference/j2534/nikolakozina-j2534/j2534/*.so
+
+# Local J2534 smoke-test executable
+reference/j2534/tests/j2534-open-test

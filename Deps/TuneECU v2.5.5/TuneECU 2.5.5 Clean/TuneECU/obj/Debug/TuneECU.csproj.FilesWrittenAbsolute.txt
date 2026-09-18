@@ -1,0 +1,9 @@
+/Users/macrunner/Desktop/Source Codes/ShimECU/Windows TuneECU (version 2.5.5, 2012)/TuneECUv2.5.5/TuneECU 2.5.5 Clean/TuneECU/obj/Debug/TuneECU.TuneECU.Resources.grab.cur
+/Users/macrunner/Desktop/Source Codes/ShimECU/Windows TuneECU (version 2.5.5, 2012)/TuneECUv2.5.5/TuneECU 2.5.5 Clean/TuneECU/bin/Debug/TuneLibrary.dll
+/Users/macrunner/Desktop/Source Codes/ShimECU/Windows TuneECU (version 2.5.5, 2012)/TuneECUv2.5.5/TuneECU 2.5.5 Clean/TuneECU/bin/Debug/TuneLibrary.pdb
+/Users/macrunner/Desktop/Source Codes/ShimECU/Windows TuneECU (version 2.5.5, 2012)/TuneECUv2.5.5/TuneECU 2.5.5 Clean/TuneECU/obj/Debug/TuneECU.TuneECU.Warning.resources
+/Users/macrunner/Desktop/Source Codes/ShimECU/Windows TuneECU (version 2.5.5, 2012)/TuneECUv2.5.5/TuneECU 2.5.5 Clean/TuneECU/obj/Debug/TuneECU.TuneECU.ISOMain.resources
+/Users/macrunner/Desktop/Source Codes/ShimECU/Windows TuneECU (version 2.5.5, 2012)/TuneECUv2.5.5/TuneECU 2.5.5 Clean/TuneECU/obj/Debug/TuneECU.TuneECU.Infos.resources
+/Users/macrunner/Desktop/Source Codes/ShimECU/Windows TuneECU (version 2.5.5, 2012)/TuneECUv2.5.5/TuneECU 2.5.5 Clean/TuneECU/obj/Debug/TuneECU.TuneECU.AboutBox.resources
+/Users/macrunner/Desktop/Source Codes/ShimECU/Windows TuneECU (version 2.5.5, 2012)/TuneECUv2.5.5/TuneECU 2.5.5 Clean/TuneECU/obj/Debug/TuneECU.TuneECU.Logs.resources
+/Users/macrunner/Desktop/Source Codes/ShimECU/Windows TuneECU (version 2.5.5, 2012)/TuneECUv2.5.5/TuneECU 2.5.5 Clean/TuneECU/obj/Debug/TuneECU.TuneECU.Properties.Resources.resources
