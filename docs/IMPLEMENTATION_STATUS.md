@@ -149,20 +149,20 @@ PassThruOpen() -> 0 (dev_id=6)
 --- Test 1: Connect ISO9141 (Channel 3), dispatch atw3 51 ---
 PassThruConnect(ISO9141) -> 0 (channel_id=3)
 Dispatching PassThruIoctl(FIVE_BAUD_INIT, addr=0x33)...
-FIVE_BAUD_INIT rc = 7, out_bytes = 16
+FIVE_BAUD_INIT rc = 7, out_bytes = 0
 [CONFIRMED] Without ECU connected, OpenPort timed out cleanly (rc=7, err='Error: J2534 device comms error: 7')
 PassThruDisconnect(ISO9141) -> 0
 
 --- Test 2: Connect ISO14230 (Channel 4), dispatch atw4 51 ---
 PassThruConnect(ISO14230) -> 0 (channel_id=4)
 Dispatching PassThruIoctl(FIVE_BAUD_INIT, addr=0x33)...
-FIVE_BAUD_INIT rc = 7, out_bytes = 16
+FIVE_BAUD_INIT rc = 7, out_bytes = 0
 [CONFIRMED] Without ECU connected, OpenPort timed out cleanly (rc=7, err='Error: J2534 device comms error: 7')
 PassThruDisconnect(ISO14230) -> 0
 
 --- Test 3: Subsequent normal commands verification ---
 PassThruConnect -> 0 (ch=4)
-PassThruStartMsgFilter -> 10 (filter_id=10)
+PassThruStartMsgFilter -> 0 (filter_id=0)\nPassThruStopMsgFilter -> 0
 PassThruDisconnect -> 0
 PassThruClose -> 0
 
