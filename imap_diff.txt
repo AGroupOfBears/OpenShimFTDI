@@ -1,0 +1,17 @@
+--- "Deps/TuneECU v2.5.5/TuneECU 2.5.5 Clean/TuneECU/TuneECU/IMap.cs"	2026-09-17 09:49:31.568862973 +1000
++++ "/home/spoqn/Desktop/Source Codes/OpenECU/reverse-engineering/tuneecu-windows-v2.5.8/TuneECU 2.5.8 Clean/TuneECU/TuneECU/IMap.cs"	2026-09-19 03:49:20.057152387 +1000
+@@ -3,8 +3,7 @@
+ using System.Windows.Forms;
+ using TuneLibrary;
+ 
+-namespace TuneECU
+-{
++namespace TuneECU;
+ 
+ public class IMap : ISOMain
+ {
+@@ -3386,4 +3385,3 @@
+ 		return Tune.kRevMax[result];
+ 	}
+ }
+-}

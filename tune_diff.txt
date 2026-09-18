@@ -1,0 +1,598 @@
+--- "Deps/TuneECU v2.5.5/TuneECU 2.5.5 Clean/TuneLibrary/Tune.cs"	2026-09-17 09:49:31.574707460 +1000
++++ "/home/spoqn/Desktop/Source Codes/OpenECU/reverse-engineering/tuneecu-windows-v2.5.8/TuneECU 2.5.8 Clean/TuneLibrary/TuneLibrary/Tune.cs"	2026-09-19 03:49:20.057856381 +1000
+@@ -1,7 +1,6 @@
+ using System.Reflection;
+ 
+-namespace TuneLibrary
+-{
++namespace TuneLibrary;
+ 
+ public class Tune
+ {
+@@ -41,7 +40,7 @@
+ 
+ 	public static int[] mTable;
+ 
+-	public static int[] eAddr = new int[2320]
++	public static int[] eAddr = new int[2480]
+ 	{
+ 		65544, 35814, 0, 33024, 0, 38938, 38533, 0, 0, 0,
+ 		34982, 1089614, 0, 0, 34950, 0, 39100, 39116, 39670, 38536,
+@@ -127,11 +126,11 @@
+ 		2118992, 27024, 28304, 29584, 0, 21904, 23184, 24464, 0, 36048,
+ 		37328, 38608, 39888, 0, 0, 0, 0, 21800, 46288, 514,
+ 		0, 0, 0, 14363, 0, 14385, 0, 0, 0, 655360,
+-		393296, 2232, 9900, 13802, 0, 9672, 9038, 0, 35984, 21760,
++		393296, 2232, 14000, 13802, 0, 9672, 9038, 0, 35984, 21760,
+ 		2118992, 27024, 28304, 29584, 0, 21904, 23184, 24464, 0, 36048,
+ 		37328, 38608, 39888, 0, 0, 0, 0, 21800, 46288, 556,
+ 		0, 0, 0, 14495, 0, 14519, 0, 0, 0, 720896,
+-		393296, 2232, 10500, 13802, 0, 9672, 9038, 0, 35984, 21760,
++		393296, 2232, 11000, 13802, 0, 9672, 9038, 0, 35984, 21760,
+ 		2118992, 27024, 28304, 29584, 0, 21904, 23184, 24464, 0, 36048,
+ 		37328, 38608, 39888, 0, 0, 0, 0, 21800, 46288, 556,
+ 		0, 0, 0, 14495, 0, 14519, 0, 0, 0, 720896,
+@@ -163,7 +162,7 @@
+ 		2118992, 27024, 28304, 29584, 0, 21904, 23184, 24464, 0, 38608,
+ 		34768, 36048, 37328, 43728, 39888, 41168, 42448, 21800, 45008, 464,
+ 		0, 0, 905328557, 0, 0, 0, 0, 0, 0, 14332,
+-		393296, 2232, 10500, 13802, 0, 9672, 9038, 0, 35984, 21760,
++		393296, 2232, 11000, 13802, 0, 9672, 9038, 0, 35984, 21760,
+ 		2118992, 27024, 28304, 29584, 0, 21904, 23184, 24464, 0, 36048,
+ 		37328, 38608, 39888, 0, 0, 0, 0, 21800, 46288, 556,
+ 		0, 0, 0, 14501, 0, 14525, 0, 0, 0, 786432,
+@@ -238,7 +237,7 @@
+ 		262192, 126, 13339, 0, 0, 0, 0, 0, 50836, 32772,
+ 		2130004, 35476, 44436, 41876, 0, 32916, 43156, 40596, 0, 51004,
+ 		58684, 57404, 52284, 0, 0, 0, 0, 50900, 0, 318,
+-		0, 0, 0, 1610822632, 0, 1610626024, 0, 0, 275425, 0,
++		0, 0, 0, 1342387176, 0, 1342190568, 0, 0, 275425, 0,
+ 		262192, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+ 		2129964, 32876, 34156, 0, 0, 0, 0, 0, 0, 0,
+ 		0, 0, 0, 0, 0, 0, 0, 32772, 0, 0,
+@@ -247,6 +246,22 @@
+ 		2129964, 32876, 34156, 35436, 36716, 0, 0, 0, 0, 0,
+ 		0, 0, 0, 0, 0, 0, 0, 32772, 0, 0,
+ 		0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
++		0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
++		0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
++		0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
++		0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
++		262192, 124, 13341, 0, 0, 0, 0, 0, 43156, 32772,
++		2130004, 38036, 0, 0, 0, 32916, 0, 0, 0, 43324,
++		0, 0, 0, 0, 0, 0, 0, 43220, 0, 488,
++		0, 0, 0, 275442, 0, 275440, 0, 0, 0, 0,
++		0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
++		0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
++		0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
++		0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
++		0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
++		0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
++		0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
++		0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+ 		131088, 51284, 10300, 0, 0, 51312, 51318, 0, 0, 0,
+ 		2145120, 39168, 52108, 0, 0, 0, 0, 0, 0, 42240,
+ 		55180, 0, 0, 0, 0, 0, 0, 47872, 0, 0,
+@@ -277,7 +292,7 @@
+ 		0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+ 	};
+ 
+-	public static uint[] mType = new uint[5568]
++	public static uint[] mType = new uint[5728]
+ 	{
+ 		2555529423u, 0u, 0u, 7373313u, 1u, 286u, 3089094469u, 0u, 2555594959u, 0u,
+ 		0u, 7373313u, 1u, 286u, 3089094469u, 0u, 2555660495u, 0u, 0u, 7373313u,
+@@ -523,40 +538,48 @@
+ 		31u, 2097667u, 24u, 9791u, 0u, 9u, 106339893u, 21u, 31u, 2097667u,
+ 		24u, 9791u, 0u, 9u, 106405430u, 21u, 31u, 2097667u, 24u, 9791u,
+ 		0u, 9u, 106470967u, 21u, 31u, 2097667u, 24u, 9791u, 0u, 9u,
+-		106536504u, 21u, 31u, 2097667u, 24u, 9791u, 0u, 9u, 118660849u, 21u,
+-		31u, 2097667u, 24u, 9791u, 0u, 9u, 118726386u, 21u, 31u, 2097667u,
+-		24u, 9791u, 0u, 9u, 118791923u, 21u, 31u, 2097667u, 24u, 9791u,
+-		0u, 9u, 118857460u, 21u, 31u, 2097667u, 24u, 9791u, 0u, 9u,
+-		118922997u, 21u, 31u, 2097667u, 24u, 9791u, 0u, 9u, 126918511u, 21u,
+-		31u, 2097667u, 24u, 9791u, 0u, 9u, 74949644u, 22u, 23u, 2097668u,
+-		28u, 1599u, 0u, 11u, 75015181u, 22u, 23u, 2097668u, 28u, 1599u,
+-		0u, 11u, 75080718u, 22u, 23u, 2097668u, 28u, 9791u, 0u, 11u,
+-		75539477u, 22u, 23u, 2097668u, 28u, 9791u, 0u, 11u, 75605014u, 22u,
+-		23u, 2097668u, 28u, 9791u, 0u, 11u, 75670551u, 22u, 23u, 2097668u,
+-		28u, 9791u, 0u, 11u, 76782706u, 22u, 31u, 2097668u, 28u, 9791u,
+-		0u, 11u, 76848243u, 22u, 31u, 2097668u, 28u, 9791u, 0u, 11u,
+-		76913780u, 22u, 31u, 2097668u, 28u, 9791u, 0u, 11u, 76979317u, 22u,
+-		31u, 2097668u, 28u, 9791u, 0u, 11u, 103194117u, 22u, 31u, 2097668u,
+-		28u, 9791u, 0u, 11u, 103259654u, 22u, 31u, 2097668u, 28u, 9791u,
+-		0u, 11u, 103325191u, 22u, 31u, 2097668u, 28u, 9791u, 0u, 11u,
+-		103390728u, 22u, 31u, 2097668u, 28u, 9791u, 0u, 11u, 103849487u, 22u,
+-		31u, 2097668u, 28u, 9791u, 0u, 11u, 103915024u, 22u, 31u, 2097668u,
+-		28u, 9791u, 0u, 11u, 103977584u, 30u, 41u, 2097668u, 29u, 9791u,
+-		0u, 11u, 104043121u, 30u, 41u, 2097668u, 29u, 9791u, 0u, 11u,
+-		104108658u, 30u, 41u, 2097668u, 29u, 9791u, 0u, 11u, 104174195u, 30u,
+-		41u, 2097668u, 29u, 9791u, 0u, 11u, 104239732u, 30u, 41u, 2097668u,
+-		29u, 9791u, 0u, 11u, 104305269u, 30u, 41u, 2097668u, 29u, 9791u,
+-		0u, 11u, 105943694u, 30u, 41u, 2097668u, 29u, 9791u, 0u, 11u,
+-		106009231u, 30u, 41u, 2097668u, 29u, 9791u, 0u, 11u, 106074768u, 30u,
+-		41u, 2097668u, 29u, 9791u, 0u, 11u, 106140305u, 30u, 41u, 2097668u,
+-		29u, 9791u, 0u, 11u, 106205842u, 30u, 41u, 2097668u, 29u, 9791u,
+-		0u, 11u, 106271379u, 30u, 41u, 2097668u, 29u, 9791u, 0u, 11u,
+-		124162980u, 30u, 41u, 2097668u, 29u, 9791u, 0u, 11u, 124228517u, 30u,
+-		41u, 2097668u, 29u, 9791u, 0u, 11u, 124294054u, 30u, 41u, 2097668u,
+-		29u, 9791u, 0u, 11u, 124359591u, 30u, 41u, 2097668u, 29u, 9791u,
+-		0u, 11u, 124818350u, 30u, 41u, 2097668u, 29u, 9791u, 0u, 11u,
+-		124883887u, 30u, 41u, 2097668u, 29u, 9791u, 0u, 11u, 134583363u, 30u,
+-		41u, 2097668u, 29u, 9791u, 0u, 11u, 134648900u, 30u, 41u, 2097668u,
++		106536504u, 21u, 31u, 2097667u, 24u, 9791u, 0u, 9u, 137601042u, 21u,
++		31u, 2097667u, 24u, 9791u, 0u, 9u, 118660849u, 21u, 31u, 2097667u,
++		24u, 9791u, 0u, 9u, 118726386u, 21u, 31u, 2097667u, 24u, 9791u,
++		0u, 9u, 118791923u, 21u, 31u, 2097667u, 24u, 9791u, 0u, 9u,
++		118857460u, 21u, 31u, 2097667u, 24u, 9791u, 0u, 9u, 118922997u, 21u,
++		31u, 2097667u, 24u, 9791u, 0u, 9u, 126918511u, 21u, 31u, 2097667u,
++		24u, 9791u, 0u, 9u, 137535505u, 21u, 31u, 2097667u, 24u, 9791u,
++		0u, 9u, 74949644u, 22u, 23u, 2097668u, 28u, 1599u, 0u, 11u,
++		75015181u, 22u, 23u, 2097668u, 28u, 1599u, 0u, 11u, 75080718u, 22u,
++		23u, 2097668u, 28u, 9791u, 0u, 11u, 75539477u, 22u, 23u, 2097668u,
++		28u, 9791u, 0u, 11u, 75605014u, 22u, 23u, 2097668u, 28u, 9791u,
++		0u, 11u, 75670551u, 22u, 23u, 2097668u, 28u, 9791u, 0u, 11u,
++		76782706u, 22u, 31u, 2097668u, 28u, 9791u, 0u, 11u, 76848243u, 22u,
++		31u, 2097668u, 28u, 9791u, 0u, 11u, 76913780u, 22u, 31u, 2097668u,
++		28u, 9791u, 0u, 11u, 76979317u, 22u, 31u, 2097668u, 28u, 9791u,
++		0u, 11u, 103194117u, 22u, 31u, 2097668u, 28u, 9791u, 0u, 11u,
++		103259654u, 22u, 31u, 2097668u, 28u, 9791u, 0u, 11u, 103325191u, 22u,
++		31u, 2097668u, 28u, 9791u, 0u, 11u, 103390728u, 22u, 31u, 2097668u,
++		28u, 9791u, 0u, 11u, 103849487u, 22u, 31u, 2097668u, 28u, 9791u,
++		0u, 11u, 103915024u, 22u, 31u, 2097668u, 28u, 9791u, 0u, 11u,
++		103977584u, 30u, 41u, 2097668u, 29u, 9791u, 0u, 11u, 104043121u, 30u,
++		41u, 2097668u, 29u, 9791u, 0u, 11u, 104108658u, 30u, 41u, 2097668u,
++		29u, 9791u, 0u, 11u, 104174195u, 30u, 41u, 2097668u, 29u, 9791u,
++		0u, 11u, 104239732u, 30u, 41u, 2097668u, 29u, 9791u, 0u, 11u,
++		104305269u, 30u, 41u, 2097668u, 29u, 9791u, 0u, 11u, 105943694u, 30u,
++		41u, 2097668u, 29u, 9791u, 0u, 11u, 106009231u, 30u, 41u, 2097668u,
++		29u, 9791u, 0u, 11u, 106074768u, 30u, 41u, 2097668u, 29u, 9791u,
++		0u, 11u, 106140305u, 30u, 41u, 2097668u, 29u, 9791u, 0u, 11u,
++		106205842u, 30u, 41u, 2097668u, 29u, 9791u, 0u, 11u, 106271379u, 30u,
++		41u, 2097668u, 29u, 9791u, 0u, 11u, 124162980u, 30u, 41u, 2097668u,
++		29u, 9791u, 0u, 11u, 124228517u, 30u, 41u, 2097668u, 29u, 9791u,
++		0u, 11u, 124294054u, 30u, 41u, 2097668u, 29u, 9791u, 0u, 11u,
++		124359591u, 30u, 41u, 2097668u, 29u, 9791u, 0u, 11u, 124818350u, 30u,
++		41u, 2097668u, 29u, 9791u, 0u, 11u, 124883887u, 30u, 41u, 2097668u,
++		29u, 9791u, 0u, 11u, 134583363u, 30u, 41u, 2097668u, 29u, 9791u,
++		0u, 11u, 134648900u, 30u, 41u, 2097668u, 29u, 9791u, 0u, 11u,
++		274916860u, 30u, 32u, 2097668u, 29u, 9791u, 0u, 11u, 274982397u, 30u,
++		32u, 2097668u, 29u, 9791u, 0u, 11u, 275047934u, 30u, 32u, 2097668u,
++		29u, 9791u, 0u, 11u, 275113471u, 30u, 32u, 2097668u, 29u, 9791u,
++		0u, 11u, 275179008u, 30u, 32u, 2097668u, 29u, 9791u, 0u, 11u,
++		275244545u, 30u, 32u, 2097668u, 29u, 9791u, 0u, 11u, 275310082u, 30u,
++		32u, 2097668u, 29u, 9791u, 0u, 11u, 275375619u, 30u, 32u, 2097668u,
+ 		29u, 9791u, 0u, 11u, 26727092u, 23u, 24u, 2098176u, 32u, 1599u,
+ 		0u, 12u, 26792629u, 23u, 24u, 2098176u, 32u, 1599u, 0u, 12u,
+ 		26858166u, 23u, 24u, 2098176u, 32u, 1599u, 0u, 12u, 33608477u, 23u,
+@@ -720,74 +743,78 @@
+ 		75u, 1077u, 0u, 22u, 107010956u, 33u, 34u, 2098946u, 75u, 1077u,
+ 		0u, 22u, 120708189u, 33u, 34u, 2098946u, 75u, 1077u, 0u, 22u,
+ 		121887855u, 33u, 34u, 2098946u, 75u, 1077u, 0u, 22u, 126016686u, 33u,
+-		34u, 2098946u, 75u, 1077u, 0u, 22u, 26462864u, 32u, 33u, 2098689u,
+-		72u, 1077u, 0u, 22u, 26528401u, 32u, 33u, 2098689u, 72u, 1077u,
+-		0u, 22u, 26593938u, 32u, 33u, 2098689u, 72u, 1077u, 0u, 22u,
+-		26659475u, 32u, 33u, 2098689u, 72u, 1077u, 0u, 22u, 40946541u, 32u,
+-		33u, 2098689u, 72u, 1077u, 0u, 22u, 41012078u, 32u, 33u, 2098689u,
+-		72u, 1077u, 0u, 22u, 53857330u, 32u, 33u, 2098689u, 72u, 1077u,
+-		0u, 22u, 53922867u, 32u, 33u, 2098689u, 72u, 1077u, 0u, 22u,
+-		53988404u, 32u, 33u, 2098689u, 72u, 1077u, 0u, 22u, 54053941u, 32u,
+-		33u, 2098689u, 72u, 1077u, 0u, 22u, 52546590u, 32u, 33u, 2098689u,
+-		72u, 1077u, 0u, 22u, 52612127u, 32u, 33u, 2098689u, 72u, 1077u,
+-		0u, 22u, 55171189u, 33u, 34u, 2098690u, 74u, 1077u, 0u, 22u,
+-		55629948u, 33u, 34u, 2098690u, 74u, 1077u, 0u, 22u, 55695485u, 33u,
+-		34u, 2098690u, 74u, 1077u, 0u, 22u, 57923743u, 33u, 34u, 2098690u,
+-		74u, 1077u, 0u, 22u, 71424365u, 33u, 34u, 2098690u, 74u, 1077u,
+-		0u, 22u, 72538494u, 33u, 34u, 2098690u, 74u, 1077u, 0u, 22u,
+-		72604031u, 33u, 34u, 2098690u, 74u, 1077u, 0u, 22u, 72669568u, 33u,
+-		34u, 2098690u, 74u, 1077u, 0u, 22u, 84007469u, 33u, 34u, 2098690u,
+-		74u, 1077u, 0u, 22u, 85121598u, 33u, 34u, 2098690u, 74u, 1077u,
+-		0u, 22u, 85187135u, 33u, 34u, 2098690u, 74u, 1077u, 0u, 22u,
+-		85252672u, 33u, 34u, 2098690u, 74u, 1077u, 0u, 22u, 36293414u, 32u,
+-		33u, 2098945u, 73u, 1077u, 0u, 22u, 36752173u, 32u, 33u, 2098945u,
+-		73u, 1077u, 0u, 22u, 36817710u, 32u, 33u, 2098945u, 73u, 1077u,
+-		0u, 22u, 36883247u, 32u, 33u, 2098945u, 73u, 1077u, 0u, 22u,
+-		52677664u, 32u, 33u, 2098945u, 73u, 1077u, 0u, 22u, 52743201u, 32u,
+-		33u, 2098945u, 73u, 1077u, 0u, 22u, 52808738u, 32u, 33u, 2098945u,
+-		73u, 1077u, 0u, 22u, 52874275u, 32u, 33u, 2098945u, 73u, 1077u,
+-		0u, 22u, 40291171u, 32u, 33u, 2098945u, 73u, 1077u, 0u, 22u,
+-		40356708u, 32u, 33u, 2098945u, 73u, 1077u, 0u, 22u, 40422245u, 32u,
+-		33u, 2098945u, 73u, 1077u, 0u, 22u, 40487782u, 32u, 33u, 2098945u,
+-		73u, 1077u, 0u, 22u, 51891220u, 32u, 33u, 2098945u, 73u, 1077u,
+-		0u, 22u, 51956757u, 32u, 33u, 2098945u, 73u, 1077u, 0u, 22u,
+-		52022294u, 32u, 33u, 2098945u, 73u, 1077u, 0u, 22u, 52481053u, 32u,
+-		33u, 2098945u, 73u, 1077u, 0u, 22u, 54909041u, 33u, 34u, 2098946u,
+-		75u, 1077u, 0u, 22u, 54974578u, 33u, 34u, 2098946u, 75u, 1077u,
+-		0u, 22u, 55040115u, 33u, 34u, 2098946u, 75u, 1077u, 0u, 22u,
+-		55105652u, 33u, 34u, 2098946u, 75u, 1077u, 0u, 22u, 57268373u, 33u,
+-		34u, 2098946u, 75u, 1077u, 0u, 22u, 57727132u, 33u, 34u, 2098946u,
+-		75u, 1077u, 0u, 22u, 70768995u, 33u, 34u, 2098946u, 75u, 1077u,
+-		0u, 22u, 70834532u, 33u, 34u, 2098946u, 75u, 1077u, 0u, 22u,
+-		71883124u, 33u, 34u, 2098946u, 75u, 1077u, 0u, 22u, 71948661u, 33u,
+-		34u, 2098946u, 75u, 1077u, 0u, 22u, 72407420u, 33u, 34u, 2098946u,
+-		75u, 1077u, 0u, 22u, 72472957u, 33u, 34u, 2098946u, 75u, 1077u,
+-		0u, 22u, 77060547u, 33u, 34u, 2098946u, 75u, 1077u, 0u, 22u,
+-		77126084u, 33u, 34u, 2098946u, 75u, 1077u, 0u, 22u, 84466228u, 33u,
+-		34u, 2098946u, 75u, 1077u, 0u, 22u, 84531765u, 33u, 34u, 2098946u,
+-		75u, 1077u, 0u, 22u, 84990524u, 33u, 34u, 2098946u, 75u, 1077u,
+-		0u, 22u, 85056061u, 33u, 34u, 2098946u, 75u, 1077u, 0u, 22u,
+-		120773726u, 33u, 34u, 2098946u, 75u, 1077u, 0u, 22u, 121691244u, 33u,
+-		34u, 2098946u, 75u, 1077u, 0u, 22u, 121953392u, 33u, 34u, 2098946u,
+-		75u, 1077u, 0u, 22u, 126082223u, 33u, 34u, 2098946u, 75u, 1077u,
+-		0u, 22u, 50569120u, 34u, 35u, 2099200u, 78u, 9791u, 0u, 24u,
+-		50634657u, 34u, 35u, 2099200u, 78u, 9791u, 0u, 24u, 50700194u, 34u,
+-		35u, 2099200u, 78u, 9791u, 0u, 24u, 50765731u, 34u, 35u, 2099200u,
+-		78u, 9791u, 0u, 24u, 56008691u, 34u, 35u, 2099200u, 78u, 9791u,
+-		0u, 24u, 56074228u, 34u, 35u, 2099200u, 78u, 9791u, 0u, 24u,
+-		56139765u, 34u, 35u, 2099200u, 78u, 9791u, 0u, 24u, 56205302u, 34u,
+-		35u, 2099200u, 78u, 9791u, 0u, 24u, 50831268u, 34u, 35u, 2099200u,
+-		78u, 9791u, 0u, 24u, 50896805u, 34u, 35u, 2099200u, 78u, 9791u,
+-		0u, 24u, 50962342u, 34u, 35u, 2099200u, 78u, 9791u, 0u, 24u,
+-		51421101u, 34u, 35u, 2099200u, 78u, 9791u, 0u, 24u, 56664061u, 34u,
+-		35u, 2099200u, 78u, 9791u, 0u, 24u, 56729598u, 34u, 35u, 2099200u,
+-		78u, 9791u, 0u, 24u, 56795135u, 34u, 35u, 2099200u, 78u, 9791u,
+-		0u, 24u, 56860672u, 34u, 35u, 2099200u, 78u, 9791u, 0u, 24u,
+-		125281300u, 34u, 35u, 2099200u, 78u, 9791u, 0u, 24u, 88386745u, 40u,
+-		42u, 6357248u, 81u, 1535u, 0u, 28u, 105163961u, 40u, 42u, 6357248u,
+-		81u, 1535u, 0u, 28u, 87073056u, 41u, 43u, 6356992u, 82u, 1535u,
+-		0u, 28u, 122897673u, 42u, 44u, 6357248u, 83u, 1535u, 0u, 28u,
+-		120944642u, 43u, 44u, 6357248u, 84u, 1535u, 0u, 28u, 137365376u, 44u,
++		34u, 2098946u, 75u, 1077u, 0u, 22u, 152428097u, 33u, 34u, 2098946u,
++		75u, 1077u, 0u, 22u, 152559171u, 33u, 34u, 2098946u, 75u, 1077u,
++		0u, 22u, 26462864u, 32u, 33u, 2098689u, 72u, 1077u, 0u, 22u,
++		26528401u, 32u, 33u, 2098689u, 72u, 1077u, 0u, 22u, 26593938u, 32u,
++		33u, 2098689u, 72u, 1077u, 0u, 22u, 26659475u, 32u, 33u, 2098689u,
++		72u, 1077u, 0u, 22u, 40946541u, 32u, 33u, 2098689u, 72u, 1077u,
++		0u, 22u, 41012078u, 32u, 33u, 2098689u, 72u, 1077u, 0u, 22u,
++		53857330u, 32u, 33u, 2098689u, 72u, 1077u, 0u, 22u, 53922867u, 32u,
++		33u, 2098689u, 72u, 1077u, 0u, 22u, 53988404u, 32u, 33u, 2098689u,
++		72u, 1077u, 0u, 22u, 54053941u, 32u, 33u, 2098689u, 72u, 1077u,
++		0u, 22u, 52546590u, 32u, 33u, 2098689u, 72u, 1077u, 0u, 22u,
++		52612127u, 32u, 33u, 2098689u, 72u, 1077u, 0u, 22u, 55171189u, 33u,
++		34u, 2098690u, 74u, 1077u, 0u, 22u, 55629948u, 33u, 34u, 2098690u,
++		74u, 1077u, 0u, 22u, 55695485u, 33u, 34u, 2098690u, 74u, 1077u,
++		0u, 22u, 57923743u, 33u, 34u, 2098690u, 74u, 1077u, 0u, 22u,
++		71424365u, 33u, 34u, 2098690u, 74u, 1077u, 0u, 22u, 72538494u, 33u,
++		34u, 2098690u, 74u, 1077u, 0u, 22u, 72604031u, 33u, 34u, 2098690u,
++		74u, 1077u, 0u, 22u, 72669568u, 33u, 34u, 2098690u, 74u, 1077u,
++		0u, 22u, 84007469u, 33u, 34u, 2098690u, 74u, 1077u, 0u, 22u,
++		85121598u, 33u, 34u, 2098690u, 74u, 1077u, 0u, 22u, 85187135u, 33u,
++		34u, 2098690u, 74u, 1077u, 0u, 22u, 85252672u, 33u, 34u, 2098690u,
++		74u, 1077u, 0u, 22u, 36293414u, 32u, 33u, 2098945u, 73u, 1077u,
++		0u, 22u, 36752173u, 32u, 33u, 2098945u, 73u, 1077u, 0u, 22u,
++		36817710u, 32u, 33u, 2098945u, 73u, 1077u, 0u, 22u, 36883247u, 32u,
++		33u, 2098945u, 73u, 1077u, 0u, 22u, 52677664u, 32u, 33u, 2098945u,
++		73u, 1077u, 0u, 22u, 52743201u, 32u, 33u, 2098945u, 73u, 1077u,
++		0u, 22u, 52808738u, 32u, 33u, 2098945u, 73u, 1077u, 0u, 22u,
++		52874275u, 32u, 33u, 2098945u, 73u, 1077u, 0u, 22u, 40291171u, 32u,
++		33u, 2098945u, 73u, 1077u, 0u, 22u, 40356708u, 32u, 33u, 2098945u,
++		73u, 1077u, 0u, 22u, 40422245u, 32u, 33u, 2098945u, 73u, 1077u,
++		0u, 22u, 40487782u, 32u, 33u, 2098945u, 73u, 1077u, 0u, 22u,
++		51891220u, 32u, 33u, 2098945u, 73u, 1077u, 0u, 22u, 51956757u, 32u,
++		33u, 2098945u, 73u, 1077u, 0u, 22u, 52022294u, 32u, 33u, 2098945u,
++		73u, 1077u, 0u, 22u, 52481053u, 32u, 33u, 2098945u, 73u, 1077u,
++		0u, 22u, 54909041u, 33u, 34u, 2098946u, 75u, 1077u, 0u, 22u,
++		54974578u, 33u, 34u, 2098946u, 75u, 1077u, 0u, 22u, 55040115u, 33u,
++		34u, 2098946u, 75u, 1077u, 0u, 22u, 55105652u, 33u, 34u, 2098946u,
++		75u, 1077u, 0u, 22u, 57268373u, 33u, 34u, 2098946u, 75u, 1077u,
++		0u, 22u, 57727132u, 33u, 34u, 2098946u, 75u, 1077u, 0u, 22u,
++		70768995u, 33u, 34u, 2098946u, 75u, 1077u, 0u, 22u, 70834532u, 33u,
++		34u, 2098946u, 75u, 1077u, 0u, 22u, 71883124u, 33u, 34u, 2098946u,
++		75u, 1077u, 0u, 22u, 71948661u, 33u, 34u, 2098946u, 75u, 1077u,
++		0u, 22u, 72407420u, 33u, 34u, 2098946u, 75u, 1077u, 0u, 22u,
++		72472957u, 33u, 34u, 2098946u, 75u, 1077u, 0u, 22u, 77060547u, 33u,
++		34u, 2098946u, 75u, 1077u, 0u, 22u, 77126084u, 33u, 34u, 2098946u,
++		75u, 1077u, 0u, 22u, 84466228u, 33u, 34u, 2098946u, 75u, 1077u,
++		0u, 22u, 84531765u, 33u, 34u, 2098946u, 75u, 1077u, 0u, 22u,
++		84990524u, 33u, 34u, 2098946u, 75u, 1077u, 0u, 22u, 85056061u, 33u,
++		34u, 2098946u, 75u, 1077u, 0u, 22u, 120773726u, 33u, 34u, 2098946u,
++		75u, 1077u, 0u, 22u, 121691244u, 33u, 34u, 2098946u, 75u, 1077u,
++		0u, 22u, 121953392u, 33u, 34u, 2098946u, 75u, 1077u, 0u, 22u,
++		126082223u, 33u, 34u, 2098946u, 75u, 1077u, 0u, 22u, 152493634u, 33u,
++		34u, 2098946u, 75u, 1077u, 0u, 22u, 152624708u, 33u, 34u, 2098946u,
++		75u, 1077u, 0u, 22u, 50569120u, 34u, 35u, 2099200u, 78u, 9791u,
++		0u, 24u, 50634657u, 34u, 35u, 2099200u, 78u, 9791u, 0u, 24u,
++		50700194u, 34u, 35u, 2099200u, 78u, 9791u, 0u, 24u, 50765731u, 34u,
++		35u, 2099200u, 78u, 9791u, 0u, 24u, 56008691u, 34u, 35u, 2099200u,
++		78u, 9791u, 0u, 24u, 56074228u, 34u, 35u, 2099200u, 78u, 9791u,
++		0u, 24u, 56139765u, 34u, 35u, 2099200u, 78u, 9791u, 0u, 24u,
++		56205302u, 34u, 35u, 2099200u, 78u, 9791u, 0u, 24u, 50831268u, 34u,
++		35u, 2099200u, 78u, 9791u, 0u, 24u, 50896805u, 34u, 35u, 2099200u,
++		78u, 9791u, 0u, 24u, 50962342u, 34u, 35u, 2099200u, 78u, 9791u,
++		0u, 24u, 51421101u, 34u, 35u, 2099200u, 78u, 9791u, 0u, 24u,
++		56664061u, 34u, 35u, 2099200u, 78u, 9791u, 0u, 24u, 56729598u, 34u,
++		35u, 2099200u, 78u, 9791u, 0u, 24u, 56795135u, 34u, 35u, 2099200u,
++		78u, 9791u, 0u, 24u, 56860672u, 34u, 35u, 2099200u, 78u, 9791u,
++		0u, 24u, 125281300u, 34u, 35u, 2099200u, 78u, 9791u, 0u, 24u,
++		88386745u, 40u, 42u, 6357248u, 81u, 1535u, 0u, 28u, 105163961u, 40u,
++		42u, 6357248u, 81u, 1535u, 0u, 28u, 87073056u, 41u, 43u, 6356992u,
++		82u, 1535u, 0u, 28u, 122897673u, 42u, 44u, 6357248u, 83u, 1535u,
++		0u, 28u, 120944642u, 43u, 44u, 6357248u, 84u, 1535u, 0u, 28u,
++		120588160u, 44u, 45u, 6357248u, 88u, 1535u, 0u, 28u, 137365376u, 44u,
+ 		45u, 6357504u, 88u, 1535u, 0u, 28u, 154142592u, 44u, 45u, 6357504u,
+ 		88u, 1535u, 0u, 28u, 137415365u, 44u, 45u, 6357504u, 88u, 1535u,
+ 		0u, 28u, 154192581u, 44u, 45u, 6357504u, 88u, 1535u, 0u, 28u,
+@@ -810,35 +837,39 @@
+ 		137529868u, 50u, 53u, 7667713u, 1026u, 0u, 0u, 40u, 271616524u, 50u,
+ 		53u, 7667713u, 1026u, 0u, 0u, 40u, 288524812u, 50u, 53u, 7667713u,
+ 		1026u, 0u, 0u, 40u, 305302028u, 50u, 53u, 7667713u, 1026u, 0u,
+-		0u, 40u, 3328076u, 55u, 58u, 16642u, 2053u, 256u, 1281u, 64u,
+-		3459148u, 55u, 58u, 16642u, 2053u, 256u, 1282u, 64u, 42804u, 51u,
+-		54u, 16386u, 2049u, 256u, 771u, 64u, 1031048u, 52u, 55u, 16386u,
+-		2049u, 256u, 772u, 64u, 1031400u, 53u, 56u, 16388u, 2050u, 256u,
+-		773u, 64u, 1162472u, 53u, 56u, 16388u, 2050u, 256u, 774u, 64u,
+-		1359230u, 54u, 57u, 16390u, 2051u, 256u, 775u, 64u, 1424766u, 54u,
+-		57u, 16390u, 2051u, 256u, 776u, 64u, 6604876u, 55u, 58u, 16642u,
+-		2053u, 256u, 777u, 64u, 117876u, 56u, 59u, 16644u, 2056u, 256u,
+-		778u, 65u, 183412u, 56u, 59u, 16644u, 2056u, 256u, 778u, 65u,
+-		13159540u, 56u, 59u, 16644u, 2056u, 256u, 525u, 65u, 16436340u, 56u,
+-		59u, 16644u, 2056u, 256u, 525u, 65u, 662490228u, 56u, 59u, 16644u,
+-		2056u, 256u, 784u, 65u, 675597428u, 56u, 59u, 16644u, 2056u, 256u,
+-		785u, 65u, 1317850228u, 56u, 59u, 16644u, 2056u, 256u, 786u, 65u,
+-		1324403828u, 56u, 59u, 16644u, 2056u, 256u, 787u, 65u, 2635123828u, 56u,
+-		59u, 16644u, 2056u, 256u, 788u, 65u, 3939290228u, 56u, 59u, 16644u,
+-		2064u, 256u, 790u, 65u, 3945843828u, 56u, 59u, 16644u, 2064u, 256u,
+-		791u, 65u, 669174900u, 56u, 59u, 16644u, 2064u, 256u, 1304u, 66u,
+-		2635254900u, 56u, 59u, 16644u, 2064u, 256u, 1305u, 66u, 668585076u, 56u,
+-		59u, 16644u, 2056u, 256u, 544u, 65u, 675138676u, 56u, 59u, 16644u,
+-		2056u, 256u, 545u, 65u, 688245876u, 56u, 59u, 16644u, 2056u, 256u,
+-		546u, 65u, 2628111476u, 56u, 59u, 16644u, 2056u, 256u, 547u, 65u,
+-		662555764u, 56u, 59u, 16644u, 2058u, 256u, 2344u, 67u, 2635189364u, 56u,
+-		59u, 16644u, 2058u, 256u, 2345u, 67u, 2641742964u, 56u, 59u, 16644u,
+-		2058u, 256u, 2346u, 67u, 662424692u, 56u, 59u, 16644u, 2058u, 256u,
+-		2096u, 67u, 668978292u, 56u, 59u, 16644u, 2058u, 256u, 2097u, 67u,
+-		2628504692u, 56u, 59u, 16644u, 2058u, 256u, 2098u, 67u
++		0u, 40u, 288387294u, 52u, 55u, 6492177u, 140u, 242u, 0u, 50u,
++		271675614u, 52u, 55u, 6500353u, 140u, 242u, 0u, 50u, 271604406u, 52u,
++		55u, 6496257u, 140u, 242u, 0u, 50u, 3328076u, 59u, 64u, 16642u,
++		2053u, 256u, 1281u, 64u, 3459148u, 59u, 64u, 16642u, 2053u, 256u,
++		1282u, 64u, 42804u, 55u, 60u, 16386u, 2049u, 256u, 771u, 64u,
++		1031048u, 56u, 61u, 16386u, 2049u, 256u, 772u, 64u, 1031400u, 57u,
++		62u, 16388u, 2050u, 256u, 773u, 64u, 1162472u, 57u, 62u, 16388u,
++		2050u, 256u, 774u, 64u, 48524u, 58u, 63u, 16390u, 2051u, 256u,
++		775u, 64u, 1359230u, 58u, 63u, 16390u, 2051u, 256u, 776u, 64u,
++		1424766u, 58u, 63u, 16390u, 2051u, 256u, 777u, 64u, 6604876u, 59u,
++		64u, 16642u, 2053u, 256u, 778u, 64u, 117876u, 60u, 65u, 16644u,
++		2056u, 256u, 779u, 65u, 183412u, 60u, 65u, 16644u, 2056u, 256u,
++		779u, 65u, 13159540u, 60u, 65u, 16644u, 2056u, 256u, 525u, 65u,
++		16436340u, 60u, 65u, 16644u, 2056u, 256u, 525u, 65u, 662490228u, 60u,
++		65u, 16644u, 2056u, 256u, 784u, 65u, 675597428u, 60u, 65u, 16644u,
++		2056u, 256u, 785u, 65u, 1317850228u, 60u, 65u, 16644u, 2056u, 256u,
++		786u, 65u, 1324403828u, 60u, 65u, 16644u, 2056u, 256u, 787u, 65u,
++		2635123828u, 60u, 65u, 16644u, 2056u, 256u, 788u, 65u, 3939290228u, 60u,
++		65u, 16644u, 2064u, 256u, 790u, 65u, 3945843828u, 60u, 65u, 16644u,
++		2064u, 256u, 791u, 65u, 669174900u, 60u, 65u, 16644u, 2064u, 256u,
++		1304u, 66u, 2635254900u, 60u, 65u, 16644u, 2064u, 256u, 1305u, 66u,
++		668585076u, 60u, 65u, 16644u, 2056u, 256u, 544u, 65u, 675138676u, 60u,
++		65u, 16644u, 2056u, 256u, 545u, 65u, 688245876u, 60u, 65u, 16644u,
++		2056u, 256u, 546u, 65u, 2628111476u, 60u, 65u, 16644u, 2056u, 256u,
++		547u, 65u, 2647772322u, 60u, 66u, 16647u, 2056u, 256u, 550u, 65u,
++		662555764u, 60u, 65u, 16644u, 2058u, 256u, 2344u, 67u, 2635189364u, 60u,
++		65u, 16644u, 2058u, 256u, 2345u, 67u, 2641742964u, 60u, 65u, 16644u,
++		2058u, 256u, 2346u, 67u, 662424692u, 60u, 65u, 16644u, 2058u, 256u,
++		2096u, 67u, 668978292u, 60u, 65u, 16644u, 2058u, 256u, 2097u, 67u,
++		2628504692u, 60u, 65u, 16644u, 2058u, 256u, 2098u, 67u
+ 	};
+ 
+-	public static uint[] eBloc = new uint[1920]
++	public static uint[] eBloc = new uint[2144]
+ 	{
+ 		24576u, 535u, 25112u, 1778u, 32768u, 8890u, 65538u, 42992u, 0u, 0u,
+ 		0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u,
+@@ -942,8 +973,8 @@
+ 		0u, 0u, 24576u, 295648u, 327648u, 32u, 327680u, 3392u, 331776u, 416u,
+ 		335872u, 2592u, 339968u, 2336u, 348160u, 34144u, 393184u, 32u, 0u, 0u,
+ 		0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u,
+-		0u, 0u, 0u, 0u, 24576u, 0u, 327648u, 32u, 327680u, 0u,
+-		331776u, 0u, 335872u, 0u, 339968u, 0u, 348160u, 0u, 393184u, 32u,
++		0u, 0u, 0u, 0u, 24576u, 295872u, 327648u, 32u, 327680u, 3392u,
++		331776u, 416u, 335872u, 2592u, 339968u, 2336u, 348160u, 34144u, 393184u, 32u,
+ 		0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u,
+ 		0u, 0u, 0u, 0u, 0u, 0u, 24576u, 258976u, 327648u, 32u,
+ 		327680u, 3200u, 331776u, 480u, 335872u, 1824u, 339968u, 2144u, 348160u, 32864u,
+@@ -1012,26 +1043,49 @@
+ 		0u, 0u, 0u, 0u, 0u, 0u, 24576u, 65280u, 196480u, 128u,
+ 		196608u, 640u, 208896u, 640u, 229376u, 5248u, 262016u, 128u, 0u, 0u,
+ 		0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u,
+-		0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 352u,
+-		512u, 43520u, 104704u, 7776u, 112896u, 4288u, 117344u, 8096u, 125824u, 4320u,
+-		130304u, 288u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u,
+ 		0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u,
+-		0u, 352u, 512u, 48832u, 104704u, 7776u, 112896u, 4288u, 117344u, 8096u,
++		0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u,
++		0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u,
++		0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u,
++		24576u, 144000u, 196480u, 128u, 196608u, 2048u, 200704u, 384u, 204800u, 512u,
++		208896u, 1280u, 229376u, 24320u, 262016u, 128u, 0u, 0u, 0u, 0u,
++		0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u,
++		0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u,
++		0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u,
++		0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u,
++		0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u,
++		0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u,
++		0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u,
++		0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u,
++		0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u,
++		0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u,
++		0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u,
++		0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u,
++		0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u,
++		0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u,
++		0u, 352u, 512u, 43520u, 104704u, 7776u, 112896u, 4288u, 117344u, 8096u,
+ 		125824u, 4320u, 130304u, 288u, 0u, 0u, 0u, 0u, 0u, 0u,
+ 		0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u,
+-		0u, 0u, 0u, 352u, 512u, 49184u, 104704u, 7776u, 112896u, 4288u,
++		0u, 0u, 0u, 352u, 512u, 48832u, 104704u, 7776u, 112896u, 4288u,
+ 		117344u, 8096u, 125824u, 4320u, 130304u, 288u, 0u, 0u, 0u, 0u,
+ 		0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u,
+-		0u, 0u, 0u, 0u, 0u, 352u, 512u, 49312u, 104704u, 7776u,
++		0u, 0u, 0u, 0u, 0u, 352u, 512u, 49184u, 104704u, 7776u,
+ 		112896u, 4288u, 117344u, 8096u, 125824u, 4320u, 130304u, 288u, 0u, 0u,
+ 		0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u,
+-		0u, 0u, 0u, 0u, 0u, 0u, 0u, 352u, 512u, 52384u,
+-		100608u, 8288u, 109312u, 4544u, 114016u, 8608u, 123008u, 4576u, 127744u, 320u,
++		0u, 0u, 0u, 0u, 0u, 0u, 0u, 352u, 512u, 49312u,
++		104704u, 7776u, 112896u, 4288u, 117344u, 8096u, 125824u, 4320u, 130304u, 288u,
+ 		0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u,
+ 		0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 352u,
+-		512u, 53472u, 100608u, 13248u, 114016u, 13568u, 127744u, 320u, 0u, 0u,
++		512u, 52384u, 100608u, 8288u, 109312u, 4544u, 114016u, 8608u, 123008u, 4576u,
++		127744u, 320u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u,
++		0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u,
++		0u, 352u, 512u, 53472u, 100608u, 13248u, 114016u, 13568u, 127744u, 320u,
++		0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u,
++		0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u,
++		0u, 0u, 0u, 352u, 512u, 53504u, 100608u, 13248u, 114016u, 13568u,
++		127744u, 320u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u,
+ 		0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u,
+-		0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u
++		0u, 0u, 0u, 0u
+ 	};
+ 
+ 	public static int[] sagemID = new int[206]
+@@ -1169,6 +1223,8 @@
+ 
+ 	public static int[] tabMapM = new int[7] { 13, 25, 17, 21, 22, 26, 31 };
+ 
++	public static int[] tabMapH = new int[6] { 13, 25, 17, 21, 26, 31 };
++
+ 	public static int[] tabMapD = new int[13]
+ 	{
+ 		13, 14, 15, 25, 17, 18, 19, 21, 22, 23,
+@@ -1213,18 +1269,18 @@
+ 
+ 	public static string[] walbroID = new string[52]
+ 	{
+-		"", "A10101", "A10201", "TNT01AL", "TNT05AN", "TNT02AR", "TNT03AR", "TNT01AU", "TNT01AUF", "TNTUSA01",
+-		"TNT02", "", "", "TREK02", "", "", "TNT101", "TNT103", "TNT201", "TNT202",
++		"", "A10101", "A10201", "TNT01AL", "TNT05AN", "TNT02AR", "TNT03AR", "TNT01AS", "TNT01AU", "TNT01AUF",
++		"TNTUSA01", "TNT02", "", "TREK02", "", "", "TNT101", "TNT103", "TNT201", "TNT202",
+ 		"TNT402", "", "TNT601", "TNT602", "TNTR102", "TNTR402", "", "", "", "",
+-		"", "", "TREK102", "TREK103", "TREK105", "TREK401", "", "", "", "",
++		"", "", "TREK102", "TREK103", "TREK105", "TREK401", "", "", "TREK404", "",
+ 		"TNT9101", "TNT9402", "TNT9403", "", "", "", "", "", "TREK9101", "TREK9102",
+ 		"TREK9401", ""
+ 	};
+ 
+-	public static string[] mKTMmodel = new string[16]
++	public static string[] mKTMmodel = new string[17]
+ 	{
+-		"Version:141", "990 Adventure:1", "990 Adventure R:1", "990 Supermoto:2", "990 Super Duke:3", "990 Super Duke R:4", "1190 RC8:6", "1190 RC8 R:6", "1190 RC8R:8", "690 Supermoto:7",
+-		"690 Duke:7", "690 Duke R:7", "690 Enduro:7", "690 Enduro R:7", "690 SMC:7", "690 SMC/Enduro:7"
++		"Version:143", "990 Adventure:1", "990 Adventure R:1", "990 Supermoto:2", "990 Super Duke:3", "990 Super Duke R:4", "1190 RC8:6", "1190 RC8 R:6", "1190 RC8R:8", "690 Supermoto:7",
++		"690 Duke:7", "690 Duke R:7", "690 Enduro:7", "690 Enduro R:7", "690 SMC:7", "690 SMC/Enduro:7", "HV16:4"
+ 	};
+ 
+ 	public static string[] mKTMinfos = new string[237]
+@@ -1255,7 +1311,7 @@
+ 		"765EU12B0252EP:KTM 690 SMC\r\nEPT map\r\n2012 model year\r\nwith standard exhaust\r\n25KW Restricted power map\r\n", "765EU12B0261FI:KTM 690 Enduro R\r\nEFI map\r\n2012 model year\r\nwith standard exhaust\r\n25KW Restricted power map\r\n", "765EU12B0261EP:KTM 690 Enduro R\r\nEPT map\r\n2012 model year\r\nwith standard exhaust\r\n25KW Restricted power map\r\n", "765EU12B0262FI:KTM 690 Enduro R\r\nEFI map\r\n2012 model year\r\nwith standard exhaust\r\n30KW Restricted power map\r\n", "765EU12B0262EP:KTM 690 Enduro R\r\nEPT map\r\n2012 model year\r\nwith standard exhaust\r\n30KW Restricted power map\r\n", "765US12B0216FI:KTM 690 Enduro R\r\nEFI map\r\n2012 model year\r\nwith standard exhaust\r\nUS only\r\n", "765US12B0216EP:KTM 690 Enduro R\r\nEPT map\r\n2012 model year\r\nwith standard exhaust\r\nUS only\r\n"
+ 	};
+ 
+-	public static string[] mTriumphInfos = new string[680]
++	public static string[] mTriumphInfos = new string[694]
+ 	{
+ 		"9852:0:Speed Triple T509\r\nProduction silencer\r\n", "9853:0:Speed Triple T509\r\nLow aftermarket silencer\r\n", "9854:0:Speed Triple T509\r\nHigh aftermarket silencer\r\n", "9855:0:Daytona T595\r\n108ps French engine\r\nProduction silencer\r\n", "9856:0:Daytona T595\r\n108ps French engine\r\nLow aftermarket silencer\r\n", "9857:0:Daytona T595\r\n108ps French engine\r\nProduction silencer\r\n", "9858:0:Daytona T595\r\n130 or 98 PS engine\r\nProduction silencer\r\nwith wheel speed sensor\r\n", "9859:0:Daytona T595\r\n130 or 98 PS engine\r\nLow aftermarket silencer\r\nwith wheel speed sensor\r\n", "9860:0:Daytona T595\r\n130 or 98 PS engine\r\nHigh aftermarket silencer\r\nwith wheel speed sensor\r\n", "9861:0:Daytona T595\r\n130 or 98 PS engine\r\nProduction silencer\r\nwithout wheel speed sensor\r\n",
+ 		"9862:0:Daytona T595\r\n130 or 98 PS engine\r\nLow aftermarket silencer\r\nwithout wheel speed sensor\r\n", "9863:0:Daytona T595\r\n130 or 98 PS engine\r\nHigh aftermarket silencer\r\nwithout wheel speed sensor\r\n", "9888:0:Sprint ST from VIN 073019 to 089736\r\nProduction silencer\r\nwithout catalyst\r\n", "9889:0:Sprint ST from VIN 073019 to 089736\r\nProduction silencer\r\nwith catalyst\r\n", "9890:0:Sprint ST from VIN 073019 to 089736\r\nAftermarket silencer\r\n", "9891:0:Tiger 885 up to VIN 089736\r\nProduction silencer\r\nwithout catalyst\r\n", "9892:0:Tiger 885 up to VIN 089736\r\nProduction silencer\r\nwith catalyst\r\n", "9893:0:Tiger 885 up to VIN 089736\r\nAftermarket silencer\r\n", "9894:0:Daytona 955 from VIN 071699 to 089736\r\nProduction silencer\r\n", "9895:0:Daytona 955 from VIN 071699 to 089736\r\nHigh aftermarket silencer\r\n",
+@@ -1324,7 +1380,9 @@
+ 		"20657:5:Speed Triple 1050 ABS from VIN 499001\r\nSpeed Triple R ABS\r\nProduction silencer\r\nFuel up to E25\r\nMinimum 95 RON (89 RON/MON) fuel\r\nJapan only\r\n", "20658:5:Speed Triple 1050 ABS from VIN 499001\r\nSpeed Triple R ABS\r\nProduction silencer\r\nFuel up to E25\r\nMinimum 95 RON (89 RON/MON) fuel\r\nAustralia, NZ and SA\r\n", "20659:5:Speed Triple 1050 ABS from VIN 499001\r\nSpeed Triple R ABS\r\nProduction silencer\r\nFuel up to E25\r\nMinimum 91 RON (87 RON/MON) fuel\r\n", "20660:8:Bonneville\r\nProduction silencers\r\nLCD odometer\r\nFuel up to E25\r\nMinimum 91 RON (87 RON/MON) fuel\r\n", "20685:4:Rocket III Roadster from VIN 574813\r\nProduction silencer\r\nFuel up to E25\r\nMinimum 91 RON (87 RON/MON) fuel\r\n", "20686:4:Rocket III Roadster from VIN 574813\r\nFrench 78.1 kW restricted\r\nProduction silencer\r\nFuel up to E25\r\nMinimum 91 RON (87 RON/MON) fuel\r\n", "20687:4:Rocket III Roadster from VIN 574813\r\nGerman 72.1 kW version\r\nProduction silencer\r\nFuel up to E25\r\nMinimum 91 RON (87 RON/MON) fuel\r\n", "20688:4:Rocket III Roadster from VIN 574813\r\nAftermarket silencer\r\nFuel up to E25\r\nMinimum 91 RON (87 RON/MON) fuel\r\n", "20712:I:Tiger Sport\r\nProduction silencer\r\nwith secondary air injection\r\nFuel up to E25\r\nMinimum 95 RON (89 RON/MON) fuel\r\n", "20713:I:Tiger Sport\r\nProduction silencer\r\nwith secondary air injection\r\nFuel up to E25\r\nMinimum 91 RON (87 RON/MON) fuel\r\n",
+ 		"20714:I:Tiger Sport\r\nProduction silencer\r\nFuel up to E25\r\nMinimum 95 RON (89 RON/MON) fuel\r\nJapan only\r\n", "20715:I:Tiger Sport\r\nAftermarket silencer\r\nwith secondary air injection\r\nFuel up to E25\r\nMinimum 95 RON (89 RON/MON) fuel\r\n", "20716:I:Tiger Sport\r\nAftermarket silencer\r\nwith secondary air injection\r\nFuel up to E25\r\nMinimum 91 RON (87 RON/MON) fuel\r\n", "20731:8:Bonneville\r\nProduction silencers - part numbers T2206356/61 or T2206366/71 or T2206476/82 or T2206486/91 only\r\nFuel up to E25\r\nMinimum 91 RON (87 RON/MON) fuel\r\n", "20732:8:Thruxton\r\nProduction silencers - part numbers T2206451/53 or T2206452/54 only\r\nFuel up to E25\r\nMinimum 91 RON (87 RON/MON) fuel\r\n", "20740:8:Thruxton\r\nProduction silencers\r\nLCD odometer\r\nFuel up to E25\r\nMinimum 91 RON (87 RON/MON) fuel\r\n", "20741:E:America from VIN 611105\r\nSpeedmaster from VIN 617261\r\nProduction silencers\r\nLCD odometer\r\nFuel up to E25\r\nMinimum 91 RON (87 RON/MON) fuel\r\n", "20742:E:America from VIN 611105\r\nSpeedmaster from VIN 617261\r\nProduction silencers\r\nLCD odometer\r\nFuel up to E25\r\nMinimum 91 RON (87 RON/MON) fuel\r\nJapan market only\r\n", "20743:8:Bonneville\r\nProduction silencers\r\nLCD odometer\r\nFuel up to E25\r\nMinimum 91 RON (87 RON/MON) fuel\r\n", "20744:8:Thruxton\r\nProduction silencers\r\nLCD odometer\r\nFuel up to E25\r\nMinimum 91 RON (87 RON/MON) fuel\r\n",
+ 		"20766:B:Tiger 800\r\nwith ABS\r\nArrow slip on silencer\r\nFuel up to E25\r\nMinimum 91 RON (87 RON/MON) fuel\r\n", "20767:B:Tiger 800 XC\r\nwith ABS\r\nArrow slip on silencer\r\nFuel up to E25\r\nMinimum 91 RON (87 RON/MON) fuel\r\n", "20768:B:Tiger 800\r\nwith ABS\r\nStandard silencer\r\nFuel up to E25\r\nMinimum 91 RON (87 RON/MON) fuel\r\n", "20769:B:Tiger 800 XC\r\nwith ABS\r\nStandard silencer\r\nFuel up to E25\r\nMinimum 91 RON (87 RON/MON) fuel\r\n", "20770:B:Tiger 800/800 XC\r\nStandard silencer\r\nFuel up to E25\r\nMinimum 91 RON (87 RON/MON) fuel\r\n", "20771:B:Tiger 800/800 XC\r\nArrow slip on silencer\r\nFuel up to E25\r\nMinimum 91 RON (87 RON/MON) fuel\r\n", "20772:4:Rocket III Roadster from VIN 574813\r\nProduction silencer\r\nFuel up to E25\r\nMinimum 91 RON (87 RON/MON) fuel\r\nBrazil only\r\n", "20773:4:Rocket III Roadster from VIN 574813\r\nProduction silencer\r\nFuel up to E25\r\nMinimum 91 RON (87 RON/MON) fuel\r\n", "20774:4:Rocket III Roadster from VIN 574813\r\nFrench 78.1 kW restricted\r\nProduction silencer\r\nFuel up to E25\r\nMinimum 91 RON (87 RON/MON) fuel\r\n", "20775:4:Rocket III Roadster from VIN 574813\r\nGerman 72.1 kW version\r\nProduction silencer\r\nFuel up to E25\r\nMinimum 91 RON (87 RON/MON) fuel\r\n",
+-		"20776:4:Rocket III Roadster from VIN 574813\r\nAftermarket silencer\r\nFuel up to E25\r\nMinimum 91 RON (87 RON/MON) fuel\r\n", "20777:A:Thunderbird 1700\r\nProduction silencers\r\nFuel up to E25\r\nMinimum 91 RON (87 RON/MON) fuel\r\nBrazil only\r\n", "20782:8:Bonneville\r\nProduction silencers - part numbers T2206355/60 or T2206475/80 only\r\nJapanese market only\r\nFuel up to E25\r\nMinimum 91 RON (87 RON/MON) fuel\r\n", "20783:8:Thruxton\r\nProduction silencers - part numbers T2206455/60 only\r\nJapanese market only\r\nFuel up to E25\r\nMinimum 91 RON (87 RON/MON) fuel\r\n", "20790:I:Tiger Sport\r\nProduction silencer\r\nBrazil market only\r\nFuel up to E25\r\nMinimum 91 RON (87 RON/MON) fuel\r\n", "20805:B:Tiger 800\r\nwith ABS\r\nProduction silencers\r\nwithout secondary air injection, Japan\r\nFuel up to E25\r\nMinimum 91 RON (87 RON/MON) fuel\r\n", "20806:B:Tiger 800 XC\r\nwith ABS\r\nProduction silencers\r\nwithout secondary air injection, Japan\r\nFuel up to E25\r\nMinimum 91 RON (87 RON/MON) fuel\r\n", "20807:E:Speedmaster from VIN 617261\r\nProduction silencers\r\nLCD odometer\r\nFuel up to E25\r\nMinimum 91 RON (87 RON/MON) fuel\r\nJapan market only\r\n", "900001:9:Daytona 675 with Race kit ECU (ref 1293100)\r\nRace kit cams (Degree'd to 104 l/c)\r\nArrow Stage 2 exhaust\r\nRace kit valves and springs\r\nRace head gasket\r\nRace kit intake stacks\r\n", "900005:7:Daytona 675 with Race kit ECU (ref 1293300)\r\nRace kit cams (Degree'd to 104 l/c)\r\nArrow Stage 2 exhaust\r\nRace kit valves and springs\r\nRace head gasket\r\nRace kit intake stacks\r\n"
++		"20776:4:Rocket III Roadster from VIN 574813\r\nAftermarket silencer\r\nFuel up to E25\r\nMinimum 91 RON (87 RON/MON) fuel\r\n", "20777:A:Thunderbird 1700\r\nProduction silencers\r\nFuel up to E25\r\nMinimum 91 RON (87 RON/MON) fuel\r\nBrazil only\r\n", "20782:8:Bonneville\r\nProduction silencers - part numbers T2206355/60 or T2206475/80 only\r\nJapanese market only\r\nFuel up to E25\r\nMinimum 91 RON (87 RON/MON) fuel\r\n", "20783:8:Thruxton\r\nProduction silencers - part numbers T2206455/60 only\r\nJapanese market only\r\nFuel up to E25\r\nMinimum 91 RON (87 RON/MON) fuel\r\n", "20790:I:Tiger Sport\r\nProduction silencer\r\nBrazil market only\r\nFuel up to E25\r\nMinimum 91 RON (87 RON/MON) fuel\r\n", "20805:B:Tiger 800\r\nwith ABS\r\nProduction silencers\r\nwithout secondary air injection, Japan\r\nFuel up to E25\r\nMinimum 91 RON (87 RON/MON) fuel\r\n", "20806:B:Tiger 800 XC\r\nwith ABS\r\nProduction silencers\r\nwithout secondary air injection, Japan\r\nFuel up to E25\r\nMinimum 91 RON (87 RON/MON) fuel\r\n", "20807:E:Speedmaster from VIN 617261\r\nProduction silencers\r\nLCD odometer\r\nFuel up to E25\r\nMinimum 91 RON (87 RON/MON) fuel\r\nJapan market only\r\n", "20832:I:Tiger Sport\r\nProduction silencer\r\nFuel up to E25\r\nMinimum 95 RON (89 RON/MON) fuel\r\nJapan only\r\n", "20833:5:Speed Triple 1050 ABS from VIN 499001\r\nSpeed Triple R ABS\r\nProduction silencer\r\nFuel up to E25\r\nMinimum 95 RON (89 RON/MON) fuel\r\nJapan only\r\n",
++		"20915:8:Bonneville\r\nProduction silencers - part numbers T2206355/60 or T2206475/80 only\r\nIndian market only\r\nFuel up to E25. Minimum 91 RON (87 RON/MON) fuel\r\n", "20916:8:Thruxton\r\nProduction silencers - part numbers T2206455/60 only\r\nIndian market only\r\nFuel up to E25. Minimum 91 RON (87 RON/MON) fuel\r\n", "20917:8:Bonneville\r\nProduction silencers - part numbers T2202777/T2207222 or T2204999/T2209444\r\nThailand market only\r\nFuel up to E25. Minimum 91 RON (87 RON/MON) fuel\r\n", "20918:8:Thruxton\r\nProduction silencers - part numbers T2206999/T2209666\r\nThailand market only\r\nFuel up to E25. Minimum 91 RON (87 RON/MON) fuel\r\n", "21062:B:Tiger 800\r\nStandard silencer\r\nFuel up to E25\r\nMinimum 91 RON (87 RON/MON) fuel\r\n", "21063:B:Tiger 800\r\nArrow slip on silencer\r\nFuel up to E25\r\nMinimum 91 RON (87 RON/MON) fuel\r\n", "21064:B:Tiger 800\r\nwith ABS\r\nArrow slip on silencer\r\nFuel up to E25\r\nMinimum 91 RON (87 RON/MON) fuel\r\n", "21065:B:Tiger 800 XC\r\nwith ABS\r\nArrow slip on silencer\r\nFuel up to E25\r\nMinimum 91 RON (87 RON/MON) fuel\r\n", "21066:B:Tiger 800\r\nwith ABS\r\nStandard silencer\r\nFuel up to E25\r\nMinimum 91 RON (87 RON/MON) fuel\r\n", "21067:B:Tiger 800 XC\r\nwith ABS\r\nStandard silencer\r\nFuel up to E25\r\nMinimum 91 RON (87 RON/MON) fuel\r\n",
++		"21068:B:Tiger 800\r\nwith ABS\r\nProduction silencers\r\nwithout secondary air injection\r\nFuel up to E25\r\nMinimum 91 RON (87 RON/MON) fuel\r\nJapan market only\r\n", "21069:B:Tiger 800 XC\r\nwith ABS\r\nProduction silencers\r\nwithout secondary air injection\r\nFuel up to E25\r\nMinimum 91 RON (87 RON/MON) fuel\r\nJapan market only\r\n", "900001:9:Daytona 675 with Race kit ECU (ref 1293100)\r\nRace kit cams (Degree'd to 104 l/c)\r\nArrow Stage 2 exhaust\r\nRace kit valves and springs\r\nRace head gasket\r\nRace kit intake stacks\r\n", "900005:7:Daytona 675 with Race kit ECU (ref 1293300)\r\nRace kit cams (Degree'd to 104 l/c)\r\nArrow Stage 2 exhaust\r\nRace kit valves and springs\r\nRace head gasket\r\nRace kit intake stacks\r\n"
+ 	};
+ 
+ 	public static bool tvMap_Define(string pc, int Typ)
+@@ -1896,9 +1954,9 @@
+ 			eRange[num2 + 32] = 1000.0;
+ 			eRange[num2 + 33] = 2400.0;
+ 			prmLabel = 1620;
+-			devLabel = 49;
++			devLabel = 3;
+ 			prmIndex = 16773648;
+-			devIndex = 49;
++			devIndex = 3;
+ 			devMask = 255;
+ 			break;
+ 		case 32:
+@@ -2894,6 +2952,68 @@
+ 			devIndex = 49;
+ 			devMask = 255;
+ 			break;
++		case 140:
++			idPC = 131072;
++			idPV = idPC;
++			idTrim = 501;
++			nStyle = ";01;04";
++			idBoot = 9;
++			mTable = tabMapH;
++			node[0] = "F";
++			node[1] = "";
++			node[2] = "L";
++			node[3] = "I";
++			node[4] = "";
++			node[5] = "";
++			node[6] = "";
++			node[7] = "";
++			node[8] = "";
++			node[9] = "";
++			node[10] = "";
++			node[11] = "";
++			node[12] = "";
++			node[13] = "";
++			node[14] = "";
++			node[15] = "";
++			tagNode[1] = 1;
++			tagNode[2] = 1;
++			tagNode[3] = 1;
++			tagNode[4] = 1;
++			tagNode[5] = 1;
++			tagNode[6] = -1;
++			tagNode[7] = -1;
++			tagNode[8] = -1;
++			tagNode[9] = -1;
++			tagNode[10] = -1;
++			tagNode[11] = -1;
++			tagNode[12] = -1;
++			tagNode[13] = -1;
++			tagNode[14] = -1;
++			tagNode[15] = -1;
++			gColor[num] = 400.0;
++			gColor[num + 1] = 225.0;
++			gColor[num + 2] = 2000.0;
++			gColor[num + 12] = 400.0;
++			gColor[num + 13] = 250.0;
++			gColor[num + 14] = 2000.0;
++			gColor[num + 24] = 0.0;
++			gColor[num + 25] = 1.5;
++			gColor[num + 27] = 0.0;
++			gColor[num + 28] = 1.5;
++			gColor[num + 48] = 800.0;
++			gColor[num + 49] = 50.0;
++			eRange[num2 + 1] = 9000.0;
++			eRange[num2 + 9] = 10000.0;
++			eRange[num2 + 16] = 6.0;
++			eRange[num2 + 18] = 6.0;
++			eRange[num2 + 17] = 54.0;
++			eRange[num2 + 19] = 54.0;
++			prmLabel = 4;
++			devLabel = 49;
++			prmIndex = 16777200;
++			devIndex = 49;
++			devMask = 255;
++			break;
+ 		case 1025:
+ 		case 1026:
+ 			idPC = 0;
+@@ -3017,8 +3137,7 @@
+ 	public static string getVersion()
+ 	{
+ 		Assembly executingAssembly = Assembly.GetExecutingAssembly();
+-		string text = "." + (executingAssembly.GetName().Version.Build).ToString() + "." + (executingAssembly.GetName().Version.Revision).ToString();
+-		return " (dll " + executingAssembly.GetName().Version.Major.ToString() + "." + (executingAssembly.GetName().Version.Minor + text) + ")";
++		string text = "." + $"{executingAssembly.GetName().Version.Build}" + "." + $"{executingAssembly.GetName().Version.Revision}";
++		return " (dll " + $"{executingAssembly.GetName().Version.Major}.{executingAssembly.GetName().Version.Minor + text}" + ")";
+ 	}
+ }
+-}
