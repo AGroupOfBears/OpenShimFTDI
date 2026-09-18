@@ -4,6 +4,12 @@ Thumbs.db
 *.log
 *.exe
 *.dll
+*.o
+
+openshim-helper
+test_helper_live
+test_ipc_framing
+
 # Native J2534 reference build artifacts
 reference/j2534/nikolakozina-j2534/j2534/*.o
 reference/j2534/nikolakozina-j2534/j2534/*.so

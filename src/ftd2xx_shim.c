@@ -1,16 +1,36 @@
 #define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <winsock2.h>
+#include <ws2tcpip.h>
+
 #include "ftd2xx_shim.h"
+#include "../include/openshim_ipc.h"
 
 #include <stdarg.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
-#define SHIM_VERSION "0.1.1"
+#define SHIM_VERSION "0.2.0"
 #define FAKE_DESCRIPTION "OpenPort 2.0 FTDI Bridge"
 #define FAKE_SERIAL "OP20SHIM01"
 #define FAKE_HANDLE_VALUE ((uintptr_t)0xF7D20001UL)
 #define RX_FIFO_CAPACITY (64U * 1024U)
+
+typedef enum {
+    BACKEND_MODE_IPC = 0,
+    BACKEND_MODE_LOOPBACK = 1
+} BackendMode;
+
+typedef enum {
+    FAST_INIT_IDLE = 0,
+    FAST_INIT_BAUD_360,
+    FAST_INIT_BREAK_ON,
+    FAST_INIT_BREAK_OFF,
+    FAST_INIT_ZERO_SENT,
+    FAST_INIT_WAIT_START_COMM
+} FastInitState;
 
 typedef struct ShimState {
     BOOL opened;
@@ -40,7 +60,34 @@ typedef struct ShimState {
     BOOL dtr;
     BOOL rts;
     BOOL break_on;
+
+    BackendMode backend_mode;
+    FastInitState fast_init_state;
+    DWORD break_toggle_count;
 } ShimState;
+
+typedef struct IpcClient {
+    BOOL wsa_initialized;
+    SOCKET sock;
+    HANDLE reader_thread;
+    volatile BOOL reader_running;
+    CRITICAL_SECTION send_lock;
+    CRITICAL_SECTION reply_lock;
+    HANDLE reply_event;
+    uint32_t seq_counter;
+
+    /* Pending reply state */
+    uint32_t waiting_seq;
+    ipc_header_t reply_hdr;
+    BYTE reply_payload[OPENSHIM_MAX_PAYLOAD];
+    uint32_t reply_payload_len;
+
+    /* Remote hardware state */
+    BOOL device_opened;
+    uint32_t device_id;
+    BOOL channel_connected;
+    uint32_t channel_id;
+} IpcClient;
 
 static HMODULE g_module;
 static CRITICAL_SECTION g_state_lock;
@@ -48,18 +95,47 @@ static CRITICAL_SECTION g_log_lock;
 static BOOL g_locks_ready;
 static FILE *g_log_file;
 static ShimState g_state;
+static IpcClient g_ipc;
+
+static void log_message(const char *format, ...);
+static void log_transfer(const char *name, FT_HANDLE handle, const BYTE *data,
+                         DWORD requested, DWORD actual, FT_STATUS status);
+static size_t fifo_push_locked(const BYTE *data, size_t length);
+static size_t fifo_pop_locked(BYTE *data, size_t length);
+static FT_STATUS ensure_ipc_channel_connected_locked(void);
 
 static void reset_open_state_locked(void)
 {
-    ZeroMemory(&g_state, sizeof(g_state));
+    g_state.opened = FALSE;
     g_state.handle = (FT_HANDLE)FAKE_HANDLE_VALUE;
+    g_state.rx_head = 0;
+    g_state.rx_tail = 0;
+    g_state.rx_count = 0;
+    g_state.tx_count = 0;
     g_state.baud_rate = 9600;
     g_state.word_length = 8;
     g_state.stop_bits = 0;
     g_state.parity = 0;
+    g_state.flow_control = 0;
+    g_state.xon = 0x11;
+    g_state.xoff = 0x13;
+    g_state.read_timeout = 0;
+    g_state.write_timeout = 0;
     g_state.latency_timer = 16;
     g_state.usb_in_size = 4096;
     g_state.usb_out_size = 4096;
+    g_state.dtr = FALSE;
+    g_state.rts = FALSE;
+    g_state.break_on = FALSE;
+    g_state.fast_init_state = FAST_INIT_IDLE;
+    g_state.break_toggle_count = 0;
+
+    const char *env_backend = getenv("OPENSHIM_BACKEND");
+    if (env_backend != NULL && _stricmp(env_backend, "loopback") == 0) {
+        g_state.backend_mode = BACKEND_MODE_LOOPBACK;
+    } else {
+        g_state.backend_mode = BACKEND_MODE_IPC;
+    }
 }
 
 static FILE *open_log_locked(void)
@@ -195,6 +271,319 @@ static size_t fifo_pop_locked(BYTE *data, size_t length)
     return read;
 }
 
+/* Sockets & IPC Client Helpers */
+
+static int ipc_send_all(SOCKET s, const void *buf, int len)
+{
+    const char *p = (const char *)buf;
+    while (len > 0) {
+        int n = send(s, p, len, 0);
+        if (n <= 0) return -1;
+        p += n;
+        len -= n;
+    }
+    return 0;
+}
+
+static int ipc_recv_all(SOCKET s, void *buf, int len)
+{
+    char *p = (char *)buf;
+    while (len > 0) {
+        int n = recv(s, p, len, 0);
+        if (n <= 0) return -1;
+        p += n;
+        len -= n;
+    }
+    return 0;
+}
+
+/* Background thread receiving packets from helper */
+static DWORD WINAPI ipc_reader_thread_proc(LPVOID param)
+{
+    (void)param;
+    log_message("[ipc] Background RX reader thread started");
+
+    uint8_t payload_buf[OPENSHIM_MAX_PAYLOAD];
+
+    while (g_ipc.reader_running) {
+        ipc_header_t hdr;
+        if (ipc_recv_all(g_ipc.sock, &hdr, sizeof(hdr)) != 0) {
+            log_message("[ipc] Connection closed or read error in reader thread");
+            break;
+        }
+
+        if (hdr.magic != OPENSHIM_IPC_MAGIC || hdr.version != OPENSHIM_IPC_VERSION) {
+            log_message("[ipc] Invalid header magic 0x%08X or version %u", hdr.magic, hdr.version);
+            break;
+        }
+
+        if (hdr.payload_len > sizeof(payload_buf)) {
+            log_message("[ipc] Payload len %u exceeds maximum buffer", hdr.payload_len);
+            break;
+        }
+
+        if (hdr.payload_len > 0) {
+            if (ipc_recv_all(g_ipc.sock, payload_buf, (int)hdr.payload_len) != 0) {
+                log_message("[ipc] Error reading payload in reader thread");
+                break;
+            }
+        }
+
+        if (hdr.command_id == IPC_CMD_RX_DATA) {
+            /* Asynchronous push of received or loopback bytes */
+            if (hdr.payload_len >= sizeof(ipc_push_rx_data_t)) {
+                const ipc_push_rx_data_t *rx_hdr = (const ipc_push_rx_data_t *)payload_buf;
+                const BYTE *data_bytes = payload_buf + sizeof(ipc_push_rx_data_t);
+                uint32_t data_len = rx_hdr->data_len;
+
+                HANDLE event_to_signal = NULL;
+                EnterCriticalSection(&g_state_lock);
+                if (g_state.opened) {
+                    size_t pushed = fifo_push_locked(data_bytes, data_len);
+                    if (pushed > 0 && (g_state.event_mask & FT_EVENT_RXCHAR) != 0) {
+                        event_to_signal = g_state.event_handle;
+                    }
+                }
+                LeaveCriticalSection(&g_state_lock);
+
+                if (event_to_signal != NULL) {
+                    SetEvent(event_to_signal);
+                }
+                log_message("[ipc] RX push received: %u bytes (status=%u), queued into RX FIFO",
+                            data_len, rx_hdr->rx_status);
+            }
+        } else {
+            /* Command reply */
+            EnterCriticalSection(&g_ipc.reply_lock);
+            g_ipc.reply_hdr = hdr;
+            g_ipc.reply_payload_len = hdr.payload_len;
+            if (hdr.payload_len > 0) {
+                memcpy(g_ipc.reply_payload, payload_buf, hdr.payload_len);
+            }
+            SetEvent(g_ipc.reply_event);
+            LeaveCriticalSection(&g_ipc.reply_lock);
+        }
+    }
+
+    log_message("[ipc] Background RX reader thread exiting");
+    return 0;
+}
+
+static FT_STATUS ipc_send_command_sync(uint16_t cmd_id, const void *payload, uint32_t payload_len,
+                                      ipc_header_t *out_hdr, void *out_payload, uint32_t max_out_len)
+{
+    if (g_ipc.sock == INVALID_SOCKET) {
+        return FT_IO_ERROR;
+    }
+
+    EnterCriticalSection(&g_ipc.send_lock);
+
+    EnterCriticalSection(&g_ipc.reply_lock);
+    uint32_t seq = ++g_ipc.seq_counter;
+    g_ipc.waiting_seq = seq;
+    ResetEvent(g_ipc.reply_event);
+    LeaveCriticalSection(&g_ipc.reply_lock);
+
+    ipc_header_t req_hdr;
+    req_hdr.magic = OPENSHIM_IPC_MAGIC;
+    req_hdr.version = OPENSHIM_IPC_VERSION;
+    req_hdr.command_id = cmd_id;
+    req_hdr.seq_id = seq;
+    req_hdr.status = 0;
+    req_hdr.payload_len = payload_len;
+
+    if (ipc_send_all(g_ipc.sock, &req_hdr, sizeof(req_hdr)) != 0) {
+        LeaveCriticalSection(&g_ipc.send_lock);
+        log_message("[ipc] Failed to send command %u header", cmd_id);
+        return FT_IO_ERROR;
+    }
+
+    if (payload_len > 0 && payload != NULL) {
+        if (ipc_send_all(g_ipc.sock, payload, (int)payload_len) != 0) {
+            LeaveCriticalSection(&g_ipc.send_lock);
+            log_message("[ipc] Failed to send command %u payload", cmd_id);
+            return FT_IO_ERROR;
+        }
+    }
+
+    LeaveCriticalSection(&g_ipc.send_lock);
+
+    DWORD wait_res = WaitForSingleObject(g_ipc.reply_event, 5000);
+    if (wait_res != WAIT_OBJECT_0) {
+        log_message("[ipc] Timeout waiting for command %u reply", cmd_id);
+        return FT_IO_ERROR;
+    }
+
+    EnterCriticalSection(&g_ipc.reply_lock);
+    if (out_hdr != NULL) {
+        *out_hdr = g_ipc.reply_hdr;
+    }
+
+    if (out_payload != NULL && g_ipc.reply_payload_len > 0) {
+        uint32_t copy_len = g_ipc.reply_payload_len < max_out_len ? g_ipc.reply_payload_len : max_out_len;
+        memcpy(out_payload, g_ipc.reply_payload, copy_len);
+    }
+
+    uint32_t status = g_ipc.reply_hdr.status;
+    LeaveCriticalSection(&g_ipc.reply_lock);
+
+    return (status == IPC_STATUS_OK) ? FT_OK : FT_IO_ERROR;
+}
+
+static FT_STATUS ipc_connect_backend(void)
+{
+    if (g_ipc.sock != INVALID_SOCKET) {
+        return FT_OK;
+    }
+
+    if (!g_ipc.wsa_initialized) {
+        WSADATA wsa;
+        if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) {
+            log_message("[ipc] WSAStartup failed");
+            return FT_DEVICE_NOT_FOUND;
+        }
+        g_ipc.wsa_initialized = TRUE;
+    }
+
+    SOCKET s = socket(AF_INET, SOCK_STREAM, 0);
+    if (s == INVALID_SOCKET) {
+        log_message("[ipc] socket creation failed");
+        return FT_DEVICE_NOT_FOUND;
+    }
+
+    int nodelay = 1;
+    setsockopt(s, IPPROTO_TCP, TCP_NODELAY, (const char *)&nodelay, sizeof(nodelay));
+
+    uint16_t port = OPENSHIM_DEFAULT_PORT;
+    const char *env_port = getenv("OPENSHIM_IPC_PORT");
+    if (env_port != NULL && env_port[0] != '\0') {
+        port = (uint16_t)atoi(env_port);
+    }
+
+    struct sockaddr_in addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(port);
+    addr.sin_addr.s_addr = inet_addr(OPENSHIM_DEFAULT_HOST);
+
+    log_message("[ipc] Connecting to helper at %s:%u...", OPENSHIM_DEFAULT_HOST, port);
+    if (connect(s, (struct sockaddr *)&addr, sizeof(addr)) != 0) {
+        log_message("[ipc] Connect failed (error %d)", WSAGetLastError());
+        closesocket(s);
+        return FT_DEVICE_NOT_FOUND;
+    }
+
+    g_ipc.sock = s;
+    g_ipc.reader_running = TRUE;
+    g_ipc.reader_thread = CreateThread(NULL, 0, ipc_reader_thread_proc, NULL, 0, NULL);
+    if (g_ipc.reader_thread == NULL) {
+        log_message("[ipc] Failed to create reader thread");
+        g_ipc.reader_running = FALSE;
+        closesocket(s);
+        g_ipc.sock = INVALID_SOCKET;
+        return FT_INSUFFICIENT_RESOURCES;
+    }
+
+    /* Send IPC_CMD_OPEN to open backend device only (PassThruOpen) */
+    ipc_req_open_t req;
+    req.device_index = 0;
+    ipc_header_t resp_hdr;
+    ipc_resp_open_t resp_payload;
+
+    FT_STATUS status = ipc_send_command_sync(IPC_CMD_OPEN, &req, sizeof(req),
+                                             &resp_hdr, &resp_payload, sizeof(resp_payload));
+    if (status != FT_OK) {
+        log_message("[ipc] Helper CMD_OPEN failed (status=%u)", resp_hdr.status);
+        g_ipc.reader_running = FALSE;
+        closesocket(g_ipc.sock);
+        g_ipc.sock = INVALID_SOCKET;
+        CloseHandle(g_ipc.reader_thread);
+        g_ipc.reader_thread = NULL;
+        return FT_DEVICE_NOT_FOUND;
+    }
+
+    g_ipc.device_opened = TRUE;
+    g_ipc.device_id = resp_payload.device_id;
+    g_ipc.channel_connected = FALSE;
+    g_ipc.channel_id = 0;
+
+    log_message("[ipc] Backend device opened successfully: DeviceID=%u, Desc='%s'",
+                g_ipc.device_id, resp_payload.description);
+    return FT_OK;
+}
+
+static void ipc_disconnect_backend(void)
+{
+    if (g_ipc.sock == INVALID_SOCKET) {
+        return;
+    }
+
+    log_message("[ipc] Closing backend connection...");
+    if (g_ipc.channel_connected) {
+        ipc_req_disconnect_t req_disc;
+        req_disc.channel_id = g_ipc.channel_id;
+        ipc_send_command_sync(IPC_CMD_DISCONNECT, &req_disc, sizeof(req_disc), NULL, NULL, 0);
+        g_ipc.channel_connected = FALSE;
+        g_ipc.channel_id = 0;
+    }
+
+    if (g_ipc.device_opened) {
+        ipc_send_command_sync(IPC_CMD_CLOSE, NULL, 0, NULL, NULL, 0);
+        g_ipc.device_opened = FALSE;
+        g_ipc.device_id = 0;
+    }
+
+    g_ipc.reader_running = FALSE;
+    closesocket(g_ipc.sock);
+    g_ipc.sock = INVALID_SOCKET;
+
+    if (g_ipc.reader_thread != NULL) {
+        WaitForSingleObject(g_ipc.reader_thread, 1000);
+        CloseHandle(g_ipc.reader_thread);
+        g_ipc.reader_thread = NULL;
+    }
+}
+
+static FT_STATUS ensure_ipc_channel_connected_locked(void)
+{
+    if (g_ipc.channel_connected) {
+        return FT_OK;
+    }
+    if (!g_ipc.device_opened) {
+        return FT_DEVICE_NOT_OPENED;
+    }
+
+    /* Defer protocol connection until required: connect with ISO14230 */
+    uint32_t baud = g_state.baud_rate;
+    if (baud == 360 || baud == 0) {
+        baud = 10400;
+    }
+
+    ipc_req_connect_t req;
+    req.device_id = g_ipc.device_id;
+    req.protocol_id = 4; /* ISO14230 */
+    req.flags = 0;
+    req.baud_rate = baud;
+
+    log_message("[ipc] Performing deferred PassThruConnect: proto=4 (ISO14230), baud=%u", baud);
+    ipc_header_t resp_hdr;
+    ipc_resp_connect_t resp;
+
+    FT_STATUS st = ipc_send_command_sync(IPC_CMD_CONNECT, &req, sizeof(req),
+                                         &resp_hdr, &resp, sizeof(resp));
+    if (st == FT_OK) {
+        g_ipc.channel_connected = TRUE;
+        g_ipc.channel_id = resp.channel_id;
+        log_message("[ipc] PassThruConnect succeeded, ChannelID=%u", g_ipc.channel_id);
+        return FT_OK;
+    } else {
+        log_message("[ipc] PassThruConnect failed (status=%u)", resp_hdr.status);
+        return FT_IO_ERROR;
+    }
+}
+
+/* DllMain */
+
 BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, LPVOID reserved)
 {
     (void)reserved;
@@ -202,15 +591,30 @@ BOOL WINAPI DllMain(HINSTANCE instance, DWORD reason, LPVOID reserved)
         g_module = instance;
         InitializeCriticalSection(&g_state_lock);
         InitializeCriticalSection(&g_log_lock);
+        InitializeCriticalSection(&g_ipc.send_lock);
+        InitializeCriticalSection(&g_ipc.reply_lock);
+        g_ipc.reply_event = CreateEvent(NULL, FALSE, FALSE, NULL);
+        g_ipc.sock = INVALID_SOCKET;
         g_locks_ready = TRUE;
         reset_open_state_locked();
         DisableThreadLibraryCalls(instance);
     } else if (reason == DLL_PROCESS_DETACH && g_locks_ready) {
+        ipc_disconnect_backend();
+        if (g_ipc.reply_event != NULL) {
+            CloseHandle(g_ipc.reply_event);
+            g_ipc.reply_event = NULL;
+        }
+        if (g_ipc.wsa_initialized) {
+            WSACleanup();
+            g_ipc.wsa_initialized = FALSE;
+        }
         if (g_log_file != NULL) {
             fflush(g_log_file);
             fclose(g_log_file);
             g_log_file = NULL;
         }
+        DeleteCriticalSection(&g_ipc.reply_lock);
+        DeleteCriticalSection(&g_ipc.send_lock);
         DeleteCriticalSection(&g_log_lock);
         DeleteCriticalSection(&g_state_lock);
         g_locks_ready = FALSE;
@@ -248,7 +652,6 @@ FT_STATUS WINAPI FT_ListDevices(PVOID pArg1, PVOID pArg2, DWORD dwFlags)
         if (pArg1 != NULL) {
             *(DWORD *)pArg1 = 1;
         } else if (pArg2 != NULL) {
-            /* Be permissive for wrappers that put the count in the second slot. */
             *(DWORD *)pArg2 = 1;
         } else {
             status = FT_INVALID_PARAMETER;
@@ -277,7 +680,6 @@ FT_STATUS WINAPI FT_ListDevices(PVOID pArg1, PVOID pArg2, DWORD dwFlags)
                                strcmp(kind, "serial") == 0 ? FAKE_SERIAL : FAKE_DESCRIPTION);
         }
     } else {
-        /* A compatibility fallback used by a few old managed wrappers. */
         mode = "fallback-description";
         if (pArg2 == NULL) {
             status = FT_INVALID_PARAMETER;
@@ -305,15 +707,23 @@ FT_STATUS WINAPI FT_Open(DWORD deviceNumber, FT_HANDLE *pHandle)
         status = FT_DEVICE_NOT_FOUND;
     } else {
         reset_open_state_locked();
-        g_state.opened = TRUE;
-        *pHandle = g_state.handle;
-        result = *pHandle;
+        if (g_state.backend_mode == BACKEND_MODE_IPC) {
+            status = ipc_connect_backend();
+        }
+        if (status == FT_OK) {
+            g_state.opened = TRUE;
+            *pHandle = g_state.handle;
+            result = *pHandle;
+        } else {
+            *pHandle = NULL;
+        }
     }
     LeaveCriticalSection(&g_state_lock);
 
-    log_message("FT_Open(device=%lu, handle_out=%p) -> status=%lu, handle=%p",
+    log_message("FT_Open(device=%lu, handle_out=%p) -> status=%lu, handle=%p (backend=%s)",
                 (unsigned long)deviceNumber, (void *)pHandle,
-                (unsigned long)status, result);
+                (unsigned long)status, result,
+                g_state.backend_mode == BACKEND_MODE_IPC ? "IPC" : "LOOPBACK");
     return status;
 }
 
@@ -328,11 +738,6 @@ FT_STATUS WINAPI FT_OpenEx(PVOID pvArg1, DWORD dwFlags, FT_HANDLE *pHandle)
                                   FT_OPEN_BY_DESCRIPTION |
                                   FT_OPEN_BY_LOCATION);
 
-    /*
-     * TuneECU 2.5.5 passes FT_LIST_BY_INDEX through to FT_OpenEx, producing
-     * 0x40000002 for a description open. Real D2XX tolerates that legacy
-     * combination, so only inspect the low FT_OPEN_BY_* selector bits here.
-     */
     if (open_flags == FT_OPEN_BY_DESCRIPTION) {
         selector = "description";
         text = (const char *)pvArg1;
@@ -356,16 +761,24 @@ FT_STATUS WINAPI FT_OpenEx(PVOID pvArg1, DWORD dwFlags, FT_HANDLE *pHandle)
         status = FT_DEVICE_NOT_FOUND;
     } else {
         reset_open_state_locked();
-        g_state.opened = TRUE;
-        *pHandle = g_state.handle;
-        result = *pHandle;
+        if (g_state.backend_mode == BACKEND_MODE_IPC) {
+            status = ipc_connect_backend();
+        }
+        if (status == FT_OK) {
+            g_state.opened = TRUE;
+            *pHandle = g_state.handle;
+            result = *pHandle;
+        } else {
+            *pHandle = NULL;
+        }
     }
     LeaveCriticalSection(&g_state_lock);
 
-    log_message("FT_OpenEx(arg=%p, flags=0x%08lX, open_flags=0x%08lX, selector=%s, value=%s, handle_out=%p) -> status=%lu, handle=%p",
+    log_message("FT_OpenEx(arg=%p, flags=0x%08lX, open_flags=0x%08lX, selector=%s, value=%s, handle_out=%p) -> status=%lu, handle=%p (backend=%s)",
                 pvArg1, (unsigned long)dwFlags, (unsigned long)open_flags, selector,
                 text != NULL ? text : "<non-string>", (void *)pHandle,
-                (unsigned long)status, result);
+                (unsigned long)status, result,
+                g_state.backend_mode == BACKEND_MODE_IPC ? "IPC" : "LOOPBACK");
     return status;
 }
 
@@ -375,6 +788,9 @@ FT_STATUS WINAPI FT_Close(FT_HANDLE ftHandle)
     EnterCriticalSection(&g_state_lock);
     status = check_handle_locked(ftHandle);
     if (status == FT_OK) {
+        if (g_state.backend_mode == BACKEND_MODE_IPC) {
+            ipc_disconnect_backend();
+        }
         reset_open_state_locked();
     }
     LeaveCriticalSection(&g_state_lock);
@@ -420,7 +836,7 @@ FT_STATUS WINAPI FT_Read(FT_HANDLE ftHandle, LPVOID lpBuffer,
 FT_STATUS WINAPI FT_Write(FT_HANDLE ftHandle, LPVOID lpBuffer,
                           DWORD dwBytesToWrite, LPDWORD lpdwBytesWritten)
 {
-    FT_STATUS status;
+    FT_STATUS status = FT_OK;
     DWORD actual = 0;
     HANDLE event_to_signal = NULL;
 
@@ -432,12 +848,96 @@ FT_STATUS WINAPI FT_Write(FT_HANDLE ftHandle, LPVOID lpBuffer,
     status = check_handle_locked(ftHandle);
     if (status == FT_OK && lpdwBytesWritten == NULL) {
         status = FT_INVALID_PARAMETER;
-    } else if (status == FT_OK && dwBytesToWrite > 0 && lpBuffer == NULL) {
+        LeaveCriticalSection(&g_state_lock);
+        return status;
+    }
+    if (status == FT_OK && dwBytesToWrite > 0 && lpBuffer == NULL) {
         status = FT_INVALID_PARAMETER;
-    } else if (status == FT_OK) {
+        LeaveCriticalSection(&g_state_lock);
+        return status;
+    }
+    if (status != FT_OK) {
+        LeaveCriticalSection(&g_state_lock);
+        return status;
+    }
+
+    const BYTE *data = (const BYTE *)lpBuffer;
+
+    /* Check KWP FAST_INIT sequence recognition */
+    if (g_state.backend_mode == BACKEND_MODE_IPC &&
+        g_state.fast_init_state == FAST_INIT_BREAK_OFF &&
+        dwBytesToWrite == 1 && data[0] == 0x00) {
+        /* TuneECU sends the 25ms low pulse byte (0x00) at 360 baud */
+        log_message("[FAST_INIT] Recognized 25ms low-pulse 0x00 byte at 360 baud");
+        g_state.fast_init_state = FAST_INIT_ZERO_SENT;
+        *lpdwBytesWritten = 1;
+        LeaveCriticalSection(&g_state_lock);
+        log_transfer("FT_Write", ftHandle, data, dwBytesToWrite, 1, FT_OK);
+        return FT_OK;
+    }
+
+    if (g_state.backend_mode == BACKEND_MODE_IPC &&
+        g_state.fast_init_state == FAST_INIT_WAIT_START_COMM &&
+        dwBytesToWrite > 0 && (data[0] == 0x81 || (dwBytesToWrite >= 4 && data[3] == 0x81))) {
+        /* TuneECU sends the KWP StartCommunication frame */
+        log_message("[FAST_INIT] Recognized StartCommunication frame; dispatching CMD_FAST_INIT to helper");
+        g_state.fast_init_state = FAST_INIT_IDLE;
+
+        status = ensure_ipc_channel_connected_locked();
+        if (status == FT_OK) {
+            uint8_t fi_buf[sizeof(ipc_req_fast_init_t) + 256];
+            ipc_req_fast_init_t *fi_req = (ipc_req_fast_init_t *)fi_buf;
+            fi_req->channel_id = g_ipc.channel_id;
+            fi_req->tx_flags = 0;
+            fi_req->timeout_ms = g_state.write_timeout ? g_state.write_timeout : 500;
+            fi_req->data_len = dwBytesToWrite;
+            memcpy(fi_buf + sizeof(ipc_req_fast_init_t), data, dwBytesToWrite);
+
+            /* Release lock during network call */
+            LeaveCriticalSection(&g_state_lock);
+
+            ipc_header_t resp_hdr;
+            uint8_t resp_buf[OPENSHIM_MAX_PAYLOAD];
+            status = ipc_send_command_sync(IPC_CMD_FAST_INIT, fi_buf,
+                                           sizeof(ipc_req_fast_init_t) + dwBytesToWrite,
+                                           &resp_hdr, resp_buf, sizeof(resp_buf));
+
+            EnterCriticalSection(&g_state_lock);
+            /* Fast-init request was transmitted on the line */
+            *lpdwBytesWritten = dwBytesToWrite;
+            actual = dwBytesToWrite;
+
+            /* Push echo of the 0x81 request into local RX FIFO so TuneECU can read it */
+            fifo_push_locked(data, dwBytesToWrite);
+
+            /* If helper returned fast-init response bytes, queue them into RX FIFO */
+            if (status == FT_OK && resp_hdr.payload_len >= sizeof(ipc_resp_fast_init_t)) {
+                const ipc_resp_fast_init_t *fi_resp = (const ipc_resp_fast_init_t *)resp_buf;
+                if (fi_resp->rx_data_len > 0) {
+                    const BYTE *rx_data = resp_buf + sizeof(ipc_resp_fast_init_t);
+                    fifo_push_locked(rx_data, fi_resp->rx_data_len);
+                    log_message("[FAST_INIT] Queued %u bytes ECU fast-init response into RX FIFO",
+                                fi_resp->rx_data_len);
+                }
+            }
+            if (g_state.rx_count > 0 && (g_state.event_mask & FT_EVENT_RXCHAR) != 0) {
+                event_to_signal = g_state.event_handle;
+            }
+            status = FT_OK;
+        }
+        LeaveCriticalSection(&g_state_lock);
+
+        if (event_to_signal != NULL) {
+            SetEvent(event_to_signal);
+        }
+        log_transfer("FT_Write", ftHandle, data, dwBytesToWrite, actual, status);
+        return status;
+    }
+
+    if (g_state.backend_mode == BACKEND_MODE_LOOPBACK) {
+        /* Synthetic loopback for testing */
         g_state.tx_count = dwBytesToWrite;
-        actual = (DWORD)fifo_push_locked((const BYTE *)lpBuffer,
-                                         (size_t)dwBytesToWrite);
+        actual = (DWORD)fifo_push_locked(data, (size_t)dwBytesToWrite);
         g_state.tx_count = 0;
         *lpdwBytesWritten = actual;
         if (actual > 0 && (g_state.event_mask & FT_EVENT_RXCHAR) != 0) {
@@ -446,14 +946,43 @@ FT_STATUS WINAPI FT_Write(FT_HANDLE ftHandle, LPVOID lpBuffer,
         if (actual != dwBytesToWrite) {
             status = FT_INSUFFICIENT_RESOURCES;
         }
+        LeaveCriticalSection(&g_state_lock);
+    } else {
+        /* IPC backend mode */
+        status = ensure_ipc_channel_connected_locked();
+        if (status != FT_OK) {
+            LeaveCriticalSection(&g_state_lock);
+            return status;
+        }
+
+        uint8_t write_buf[sizeof(ipc_req_write_t) + OPENSHIM_MAX_PAYLOAD];
+        ipc_req_write_t *req = (ipc_req_write_t *)write_buf;
+        req->channel_id = g_ipc.channel_id;
+        req->tx_flags = 0;
+        req->timeout_ms = g_state.write_timeout ? g_state.write_timeout : 500;
+        req->data_len = dwBytesToWrite;
+        memcpy(write_buf + sizeof(ipc_req_write_t), data, dwBytesToWrite);
+
+        LeaveCriticalSection(&g_state_lock);
+
+        ipc_header_t resp_hdr;
+        ipc_resp_write_t resp;
+        status = ipc_send_command_sync(IPC_CMD_WRITE, write_buf,
+                                       sizeof(ipc_req_write_t) + dwBytesToWrite,
+                                       &resp_hdr, &resp, sizeof(resp));
+
+        EnterCriticalSection(&g_state_lock);
+        if (status == FT_OK) {
+            actual = resp.bytes_written;
+            *lpdwBytesWritten = actual;
+        }
+        LeaveCriticalSection(&g_state_lock);
     }
-    LeaveCriticalSection(&g_state_lock);
 
     if (event_to_signal != NULL) {
         SetEvent(event_to_signal);
     }
-    log_transfer("FT_Write", ftHandle, (const BYTE *)lpBuffer,
-                 dwBytesToWrite, actual, status);
+    log_transfer("FT_Write", ftHandle, data, dwBytesToWrite, actual, status);
     return status;
 }
 
@@ -476,8 +1005,48 @@ SIMPLE_HANDLE_SETTER(FT_SetDtr, dtr, TRUE, ", dtr=1")
 SIMPLE_HANDLE_SETTER(FT_ClrDtr, dtr, FALSE, ", dtr=0")
 SIMPLE_HANDLE_SETTER(FT_SetRts, rts, TRUE, ", rts=1")
 SIMPLE_HANDLE_SETTER(FT_ClrRts, rts, FALSE, ", rts=0")
-SIMPLE_HANDLE_SETTER(FT_SetBreakOn, break_on, TRUE, ", break=on")
-SIMPLE_HANDLE_SETTER(FT_SetBreakOff, break_on, FALSE, ", break=off")
+
+FT_STATUS WINAPI FT_SetBreakOn(FT_HANDLE ftHandle)
+{
+    FT_STATUS status;
+    EnterCriticalSection(&g_state_lock);
+    status = check_handle_locked(ftHandle);
+    if (status == FT_OK) {
+        g_state.break_on = TRUE;
+        if (g_state.fast_init_state == FAST_INIT_BAUD_360) {
+            g_state.fast_init_state = FAST_INIT_BREAK_ON;
+            log_message("[FAST_INIT] Transitioned to FAST_INIT_BREAK_ON");
+        }
+
+        /* Detect 5-baud init bit-banging */
+        g_state.break_toggle_count++;
+        if (g_state.break_toggle_count >= 3 && g_state.baud_rate != 360) {
+            log_message("[FIVE_BAUD_INIT] Detected 5-baud bit-bang initialization sequence; unsupported by J2534 backend. Logging explicit unsupported condition.");
+        }
+    }
+    LeaveCriticalSection(&g_state_lock);
+    log_message("FT_SetBreakOn(handle=%p) -> status=%lu, break=on",
+                ftHandle, (unsigned long)status);
+    return status;
+}
+
+FT_STATUS WINAPI FT_SetBreakOff(FT_HANDLE ftHandle)
+{
+    FT_STATUS status;
+    EnterCriticalSection(&g_state_lock);
+    status = check_handle_locked(ftHandle);
+    if (status == FT_OK) {
+        g_state.break_on = FALSE;
+        if (g_state.fast_init_state == FAST_INIT_BREAK_ON) {
+            g_state.fast_init_state = FAST_INIT_BREAK_OFF;
+            log_message("[FAST_INIT] Transitioned to FAST_INIT_BREAK_OFF");
+        }
+    }
+    LeaveCriticalSection(&g_state_lock);
+    log_message("FT_SetBreakOff(handle=%p) -> status=%lu, break=off",
+                ftHandle, (unsigned long)status);
+    return status;
+}
 
 FT_STATUS WINAPI FT_SetBaudRate(FT_HANDLE ftHandle, DWORD dwBaudRate)
 {
@@ -486,6 +1055,31 @@ FT_STATUS WINAPI FT_SetBaudRate(FT_HANDLE ftHandle, DWORD dwBaudRate)
     status = check_handle_locked(ftHandle);
     if (status == FT_OK) {
         g_state.baud_rate = dwBaudRate;
+
+        if (dwBaudRate == 360) {
+            /* KWP FAST_INIT sequence start: 360 baud low pulse */
+            g_state.fast_init_state = FAST_INIT_BAUD_360;
+            log_message("[FAST_INIT] Detected baud=360; entering FAST_INIT_BAUD_360 state. Not sending 360 to J2534.");
+        } else if (dwBaudRate == 10400 && g_state.fast_init_state == FAST_INIT_ZERO_SENT) {
+            g_state.fast_init_state = FAST_INIT_WAIT_START_COMM;
+            log_message("[FAST_INIT] Baud restored to 10400; waiting for StartCommunication frame.");
+        } else {
+            /* Ordinary baud rate update */
+            if (g_state.backend_mode == BACKEND_MODE_IPC && g_ipc.channel_connected) {
+                ipc_req_set_config_t req;
+                req.channel_id = g_ipc.channel_id;
+                req.parameter = 1; /* CONFIG_DATA_RATE */
+                req.value = dwBaudRate;
+                LeaveCriticalSection(&g_state_lock);
+
+                ipc_header_t resp_hdr;
+                ipc_send_command_sync(IPC_CMD_SET_CONFIG, &req, sizeof(req), &resp_hdr, NULL, 0);
+
+                EnterCriticalSection(&g_state_lock);
+                log_message("[ipc] PassThruIoctl(SET_CONFIG, DATA_RATE=%lu) -> status=%u",
+                            (unsigned long)dwBaudRate, resp_hdr.status);
+            }
+        }
     }
     LeaveCriticalSection(&g_state_lock);
     log_message("FT_SetBaudRate(handle=%p, baud=%lu) -> status=%lu",
@@ -547,6 +1141,22 @@ FT_STATUS WINAPI FT_Purge(FT_HANDLE ftHandle, DWORD dwMask)
         }
         if ((dwMask & FT_PURGE_TX) != 0) {
             g_state.tx_count = 0;
+        }
+
+        if (g_state.backend_mode == BACKEND_MODE_IPC && g_ipc.channel_connected) {
+            uint32_t ch_id = g_ipc.channel_id;
+            LeaveCriticalSection(&g_state_lock);
+
+            if ((dwMask & FT_PURGE_RX) != 0) {
+                ipc_req_clear_buffer_t req = { ch_id };
+                ipc_send_command_sync(IPC_CMD_CLEAR_RX, &req, sizeof(req), NULL, NULL, 0);
+            }
+            if ((dwMask & FT_PURGE_TX) != 0) {
+                ipc_req_clear_buffer_t req = { ch_id };
+                ipc_send_command_sync(IPC_CMD_CLEAR_TX, &req, sizeof(req), NULL, NULL, 0);
+            }
+
+            EnterCriticalSection(&g_state_lock);
         }
     }
     LeaveCriticalSection(&g_state_lock);
@@ -625,10 +1235,9 @@ FT_STATUS WINAPI FT_SetEventNotification(FT_HANDLE ftHandle, DWORD dwEventMask,
     if (event_to_signal != NULL) {
         SetEvent(event_to_signal);
     }
-    log_message("FT_SetEventNotification(handle=%p, mask=0x%08lX, event=%p) -> status=%lu%s",
+    log_message("FT_SetEventNotification(handle=%p, mask=0x%08lX, event=%p) -> status=%lu",
                 ftHandle, (unsigned long)dwEventMask, pvArg,
-                (unsigned long)status,
-                event_to_signal != NULL ? ", signaled=pending-rx" : "");
+                (unsigned long)status);
     return status;
 }
 
@@ -641,7 +1250,7 @@ FT_STATUS WINAPI FT_SetLatencyTimer(FT_HANDLE ftHandle, UCHAR ucLatency)
         g_state.latency_timer = ucLatency;
     }
     LeaveCriticalSection(&g_state_lock);
-    log_message("FT_SetLatencyTimer(handle=%p, latency_ms=%u) -> status=%lu",
+    log_message("FT_SetLatencyTimer(handle=%p, latency=%u) -> status=%lu",
                 ftHandle, (unsigned)ucLatency, (unsigned long)status);
     return status;
 }
