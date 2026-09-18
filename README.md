@@ -100,3 +100,10 @@ entirely synthetic and all traffic stays in process memory.
 
 This code intentionally contains no J2534, USB, Tactrix, K-line, or ECU-flash
 implementation yet.
+
+## Credits
+
+- *[Alain Fontaine](https://tuneecu.net/)*: For his original work with TuneECU. I still don't like you, you closed off the repository of stock maps and slapped a paywall on it, that's a pretty shitty thing to do, but credit where credit is due.
+- *[Aiden Korbs](https://github.com/Aiden-korbs/openport2-winarm-j2534)*: For the ARM fork of J2534 which was used to get 5_BAUD_INIT working in Nikola Kozina's J2534 fork for linux.
+- *[Nikola Kozina](https://github.com/NikolaKozina/j2534)*: For the J2534 fork for linux that was used to get the OpenPort2 to FTDI working.
+- *[Tactrix](https://www.tactrix.com/index.php?Itemid=61)*: For the OpenPort 2.0 which has come in handy on almost all of my vehicles... Except my Daytona, See: Alain Fontaine.

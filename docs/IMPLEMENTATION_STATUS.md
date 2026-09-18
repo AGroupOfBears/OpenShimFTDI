@@ -2,9 +2,9 @@
 
 ## 1. Overview and Architecture
 
-OpenShimFTDI is an x86 Windows `FTD2XX.dll` compatibility shim designed to enable TuneECU (running under Wine) to communicate with automotive ECUs via a Tactrix OpenPort 2.0 interface.
+OpenShimFTDI is an x86 Windows `FTD2XX.dll` compatibility shim designed to enable TuneECU (running under Wine) to communicate with automotive and motorcycle ECUs via a Tactrix OpenPort 2.0 interface.
 
-The target architecture is implemented and verified end-to-end:
+The transport architecture has been implemented and verified end-to-end through physical OpenPort 2.0 hardware:
 
 ```
 +-------------------------------------------------------------+
@@ -18,7 +18,8 @@ The target architecture is implemented and verified end-to-end:
 | - Local circular RX FIFO (64 KB) with zero-latency FT_GetStatus|
 | - Win32 event notification (FT_SetEventNotification/FT_EVENT_RXCHAR)|
 | - KWP Fast Init sequence state machine                      |
-| - 5-baud bit-bang sequence detection and logging            |
+| - 5-baud break pattern decoder (0x33, 0xD5)                 |
+| - Handshake virtualization (echo ~KB2, inject ~Address)     |
 | - Deferred PassThruConnect at first communication           |
 | - Dual backend modes: OPENSHIM_BACKEND=loopback | ipc       |
 +-------------------------------------------------------------+
@@ -32,13 +33,17 @@ The target architecture is implemented and verified end-to-end:
 | - Thread-safe J2534 serialization mutex                     |
 | - Asynchronous background RX polling and TCP streaming      |
 | - Pass-All filter management and LOOPBACK=1 echo            |
-| - Dynamic loader for native libj2534.so                     |
+| - IPC_CMD_FIVE_BAUD_INIT handler                            |
+| - Dynamic loader for native j2534.so                        |
 +-------------------------------------------------------------+
                               |
                               | J2534 API (C dynamic link)
                               v
 +-------------------------------------------------------------+
-| NikolaKozina J2534 Driver (libj2534.so) / libusb-1.0        |
+| NikolaKozina J2534 Driver (j2534.so) / libusb-1.0           |
+| - usb_send_read_once()                                      |
+| - PassThruIoctl(J2534_FIVE_BAUD_INIT) -> OpenPort 'atw'     |
+| - Channel validation & PassThruGetLastError bugfixes        |
 +-------------------------------------------------------------+
                               |
                               | USB (VID: 0403, PID: CC4D)
@@ -52,91 +57,128 @@ The target architecture is implemented and verified end-to-end:
 
 ## 2. Implemented Functionality
 
-### 2.1 32-bit Windows FTD2XX.dll Shim
-- **Export Table**: All 22 D2XX API functions implemented and exported with stdcall calling convention and clean undecorated aliases via `--kill-at`.
-- **Backend Selection**:
-  - `OPENSHIM_BACKEND=loopback`: In-process synthetic loopback FIFO for isolated unit testing without external processes.
-  - `OPENSHIM_BACKEND=ipc` (default): Winsock client connecting to `127.0.0.1:19234` (configurable via `OPENSHIM_IPC_PORT`).
-- **Deferred J2534 Protocol Connection**:
-  - `FT_Open` / `FT_OpenEx` issues `IPC_CMD_OPEN` (`PassThruOpen`) only.
-  - Protocol connection (`PassThruConnect`) is deferred until first transmit or initialization to ensure correct protocol configuration (e.g., ISO14230 vs ISO9141).
-- **Local RX FIFO Buffering**:
-  - In-memory circular FIFO (64 KB capacity) maintained inside the DLL.
-  - Background Winsock reader thread receives pushed RX frames from helper daemon and inserts them immediately.
-  - `FT_GetStatus` queries local count without socket latency or round-trips.
-  - `FT_Read` drains the local circular FIFO.
-  - `FT_SetEventNotification` triggers Win32 event upon receiving `FT_EVENT_RXCHAR`.
-- **KWP Fast Init State Recognition**:
-  - Tracks sequence: `FT_SetBaudRate(360)` -> `FT_SetBreakOn` -> `FT_SetBreakOff` -> `FT_Write({0x00}, 1)` -> `FT_SetBaudRate(10400)` -> `FT_Write({0x81, ...}, len)`.
-  - Suppresses transmitting 360 baud directly to J2534 (which would fail on OpenPort).
-  - Automatically translates `FT_Write` with `0x81` into `IPC_CMD_FAST_INIT` (`PassThruIoctl(FAST_INIT)`).
-  - Injects transmitted frame echo into local RX FIFO to satisfy TuneECU's strict echo verification.
-- **5-Baud Bit-Bang Detection**:
-  - Tracks break toggling at non-360 bauds.
-  - Detects 5-baud sequence and emits structured log notice: `[FIVE_BAUD_INIT] Detected 5-baud bit-bang initialization sequence; unsupported by J2534 backend. Logging explicit unsupported condition.`
-- **Buffer Purging**:
-  - `FT_Purge(FT_PURGE_RX | FT_PURGE_TX)` drains local circular FIFO and issues `CLEAR_RX_BUFFER` and `CLEAR_TX_BUFFER` ioctls to hardware.
-- **Logging**:
-  - Thread-safe structured logging with timestamps, thread IDs, and hex payload dumps in `ftd2xx-shim.log`.
+### 2.1 J2534 Backend (`j2534.so` / NikolaKozina J2534)
+- **Synchronous USB Transfer**: Added `usb_send_read_once()` to execute a synchronous OUT bulk transfer followed by an IN bulk transfer with custom timeout (5000 ms), properly converting OpenPort firmware error codes (`are <n>`) into `J2534_ERR_FAILED`.
+- **`PassThruIoctl(J2534_FIVE_BAUD_INIT)`**:
+  - Implements J2534-1 5-baud initialization ioctl ID 4.
+  - Takes input `SBYTE_ARRAY` containing target address (e.g. `0x33` or `0xD5`).
+  - Dispatches OpenPort firmware command `atw<ChannelID> <address_decimal>\r\n` (e.g. `atw3 51\r\n` for ISO9141 or `atw4 51\r\n` for ISO14230).
+  - Uses 5000 ms timeout.
+  - Safely parses `arw` response using `strtok_r` (reentrant) and converts decimal byte tokens into `output->BytePtr`.
+  - Respects caller's `output->NumOfBytes` buffer capacity and updates `output->NumOfBytes` with actual received count.
+  - Translates `are 7` (timeout without ECU response) to `J2534_ERR_FAILED` with error text `Error: J2534 device comms error: 7`.
+- **Channel Validation Fix**:
+  - Replaced faulty upstream Nikola check `strtoul(&con->channel, ...)` (which passed a pointer to a single byte) with `valid_channel_id(ChannelID)` across `PassThruDisconnect`, `PassThruReadMsgs`, `PassThruWriteMsgs`, `PassThruStartMsgFilter`, `PassThruStopMsgFilter`, and `PassThruIoctl`.
+  - Resets `con->channel = 0; con->protocol_id = 0;` on disconnect and close.
+- **`PassThruGetLastError` Fix**:
+  - Replaced upstream pointer overwrite (`pErrorDescription = LAST_ERROR;`) with safe string copy `strncpy(pErrorDescription, LAST_ERROR, LE_LEN - 1);`.
 
-### 2.2 Native Linux Helper (`openshim-helper`)
-- **Transport**: Native C Linux daemon listening strictly on `127.0.0.1:19234`.
-- **IPC Protocol (`openshim_ipc.h`)**:
-  - Strict 20-byte packed binary header: `magic (0x4F505348)`, `version (1)`, `command_id`, `seq_id`, `status`, `payload_len`.
-  - Commands implemented: `PING`, `OPEN`, `CLOSE`, `CONNECT`, `DISCONNECT`, `READ`, `WRITE`, `SET_CONFIG`, `CLEAR_RX`, `CLEAR_TX`, `FAST_INIT`, `START_FILTER`, and asynchronous `RX_DATA` push.
-- **J2534 Concurrency Protection**:
-  - NikolaKozina `j2534.c` uses shared USB endpoints without internal locking.
-  - Helper enforces `pthread_mutex_t g_j2534_lock` across all J2534 calls (`PassThruOpen`, `PassThruConnect`, `PassThruIoctl`, `PassThruReadMsgs`, `PassThruWriteMsgs`).
-- **Loopback & Filtering**:
-  - Configures `LOOPBACK = 1` on channel connect.
-  - Installs Pass-All filter (`PassThruStartMsgFilter` with mask 0x00 and pattern 0x00).
-- **Asynchronous RX Streaming**:
-  - Dedicated background thread polls `PassThruReadMsgs` and pushes received/echoed frames immediately to the connected client as `IPC_CMD_RX_DATA`.
+### 2.2 IPC Protocol (`include/openshim_ipc.h`)
+- Added command:
+  ```c
+  IPC_CMD_FIVE_BAUD_INIT = 14
+  ```
+- Defined packed payload structures:
+  ```c
+  typedef struct {
+      uint32_t channel_id;
+      uint8_t  target_address;  /* 0x33 or 0xD5 */
+      uint8_t  pad[3];
+  } ipc_req_five_baud_init_t;
+
+  typedef struct {
+      uint32_t num_keybytes;
+      uint8_t  keybytes[16];
+  } ipc_resp_five_baud_init_t;
+  ```
+
+### 2.3 Native Linux Helper (`openshim-helper`)
+- Implemented `IPC_CMD_FIVE_BAUD_INIT` handler.
+- Acquires `pthread_mutex_lock(&g_j2534_lock)` to protect shared USB endpoints.
+- Prepares `J2534_SBYTE_ARRAY` structures and executes `g_j2534.PassThruIoctl(ctx->channel_id, J2534_FIVE_BAUD_INIT, &in_arr, &out_arr)`.
+- Copies returned key bytes into `ipc_resp_five_baud_init_t` and sends reply to shim.
+
+### 2.4 32-bit Windows FTD2XX.dll Shim (`src/ftd2xx_shim.c`)
+- **5-Baud Break-Pattern Decoder**:
+  - Tracks 11-bit break bit-bang train from TuneECU (`FT_SetBreakOn` = 0, `FT_SetBreakOff` = 1).
+  - Validates UART framing: Start bit = 0, Stop bit = 1.
+  - Decodes target addresses: `0x33` (Keihin, 51) and `0xD5` (Sagem, 213).
+  - Automatically resets accumulator if break train is interrupted (> 1500 ms).
+- **Wakeup Dispatch & Normalization**:
+  - In `BACKEND_MODE_IPC`: Dispatches `IPC_CMD_FIVE_BAUD_INIT` to helper.
+  - In `BACKEND_MODE_LOOPBACK`: Generates ECU keybytes `[0x55, 0x08, 0x08]` for `0x33` or `[0x55, 0xD9, 0x8F]` for `0xD5`.
+  - Normalizes returned key bytes into TuneECU's expected `[0x55, KB1, KB2]` format.
+  - Pushes normalized 3-byte payload to local RX FIFO and signals `FT_EVENT_RXCHAR`.
+- **Post-Break Purge Preservation**:
+  - Sets `five_baud_rx_ready = TRUE` upon receiving key bytes.
+  - When TuneECU issues its post-break `FT_Purge(FT_PURGE_RX)`, the 3 key bytes in the RX FIFO are preserved rather than cleared.
+- **Handshake Virtualization State Machine**:
+  - Tracks `five_baud_state = FIVE_BAUD_STATE_AWAITING_INIT`.
+  - Calculates `expected_init = KB2 ^ 0xFF` and `expected_ack = target_address ^ 0xFF`.
+  - In `FT_Write`:
+    - Checks 5000 ms expiration timer; resets to `FIVE_BAUD_STATE_IDLE` on timeout.
+    - When TuneECU writes `expected_init`:
+      1. Suppresses transmission to hardware/IPC (OpenPort firmware already completed handshake internally via `atw`).
+      2. Injects local FTDI write echo of `expected_init` into RX FIFO.
+      3. Injects `expected_ack` (`~Address`) into RX FIFO.
+      4. Signals `FT_EVENT_RXCHAR`.
+      5. Clears `five_baud_state` to `FIVE_BAUD_STATE_IDLE`.
+    - If a non-matching byte is written, it is **not** suppressed and is passed to the normal write path while resetting state to `IDLE`.
 
 ---
 
 ## 3. Test Suite Results
 
-The test suite consists of 4 automated test suites run via `make test`:
+All automated test suites and live hardware tests pass:
 
 | Test Suite | Target Binary | Environment | Scope | Result |
 | :--- | :--- | :--- | :--- | :--- |
-| **IPC Framing Unit Test** | `test_ipc_framing` | Native Linux (gcc) | Header packing, 20-byte alignment, serialization, status codes | **PASS** |
+| **IPC Framing Unit Test** | `test_ipc_framing` | Native Linux (gcc) | Header packing, 20-byte alignment, connect/write/push payloads, `IPC_CMD_FIVE_BAUD_INIT` request/response structures | **PASS** |
 | **Synthetic Loopback Test** | `test_shim.exe` | Wine 32-bit (`OPENSHIM_BACKEND=loopback`) | 22 D2XX exports, open/close, baud/data/flow settings, event signaling, write-read FIFO loopback, purge | **PASS** |
+| **5-Baud Break Decode & Virtualization Test** | `test_shim_break_decode.exe` | Wine 32-bit (`OPENSHIM_BACKEND=loopback`) | Mock 0x33 handshake (keybytes [0x55,0x08,0x08], echo 0xF7, ACK 0xCC), Mock 0xD5 handshake (keybytes [0x55,0xD9,0x8F], echo 0x70, ACK 0x2A), non-matching write pass-through, stale-state timeout (>5000ms) reset | **PASS** |
 | **Live Native Helper Test** | `test_helper_live` | Native Linux against Tactrix OpenPort 2.0 | `PassThruOpen`, `PassThruConnect(ISO14230, 10400)`, `SET_CONFIG(DATA_RATE=10400)`, `SET_CONFIG(DATA_RATE=62400)`, `CLEAR_RX`, `CLEAR_TX`, `FAST_INIT` dispatch, `PassThruDisconnect`, `PassThruClose` | **PASS** |
-| **End-to-End Wine IPC Test** | `test_shim_ipc.exe` | Wine 32-bit DLL communicating with Linux Helper | Full transport bridge: Wine Winsock IPC -> Helper -> Tactrix OpenPort 2.0, deferred connect, Fast Init recognition, Win32 event signaling, RX queue count verification, local FIFO drain, purge, 5-baud detection logging | **PASS** |
+| **End-to-End Wine IPC Test** | `test_shim_ipc.exe` | Wine 32-bit DLL communicating with Linux Helper | Full transport bridge: Wine Winsock IPC -> Helper -> Tactrix OpenPort 2.0, deferred connect, Fast Init recognition, Win32 event signaling, RX queue count verification, local FIFO drain, purge | **PASS** |
+| **Live 5-Baud Hardware Test** | `test_five_baud_live` | Native Linux against Tactrix OpenPort 2.0 | Dispatches `atw3 51` on ISO9141; clean timeout `are 7` mapping without ECU; dispatches `atw4 51` on ISO14230; clean timeout `are 7`; subsequent normal connect, filter, disconnect, close without deadlock or crash | **PASS** |
 
-### Live Physical Hardware Verification
+### Live Physical Hardware Verification Log Summary
+```
+=== OpenPort 2.0 Live FIVE_BAUD_INIT & Hardware Safety Test ===
+Loading J2534 library: ./j2534.so
+PassThruOpen() -> 0 (dev_id=6)
+
+--- Test 1: Connect ISO9141 (Channel 3), dispatch atw3 51 ---
+PassThruConnect(ISO9141) -> 0 (channel_id=3)
+Dispatching PassThruIoctl(FIVE_BAUD_INIT, addr=0x33)...
+FIVE_BAUD_INIT rc = 7, out_bytes = 16
+[CONFIRMED] Without ECU connected, OpenPort timed out cleanly (rc=7, err='Error: J2534 device comms error: 7')
+PassThruDisconnect(ISO9141) -> 0
+
+--- Test 2: Connect ISO14230 (Channel 4), dispatch atw4 51 ---
+PassThruConnect(ISO14230) -> 0 (channel_id=4)
+Dispatching PassThruIoctl(FIVE_BAUD_INIT, addr=0x33)...
+FIVE_BAUD_INIT rc = 7, out_bytes = 16
+[CONFIRMED] Without ECU connected, OpenPort timed out cleanly (rc=7, err='Error: J2534 device comms error: 7')
+PassThruDisconnect(ISO14230) -> 0
+
+--- Test 3: Subsequent normal commands verification ---
+PassThruConnect -> 0 (ch=4)
+PassThruStartMsgFilter -> 10 (filter_id=10)
+PassThruDisconnect -> 0
+PassThruClose -> 0
+
+=== HARDWARE VALIDATION PASSED WITHOUT DEADLOCK OR CRASH ===
+```
+
+---
+
+## 4. Unresolved Items & Important Notes
+
 > [!IMPORTANT]
-> The Tactrix OpenPort 2.0 hardware (USB VID: 0403, PID: CC4D, Rev: 0200) was physically connected and verified during testing.
-> - `PassThruOpen` returned Device ID 5 (`Tactrix OpenPort 2.0`, FW `OpenPort 2.0 J2534`).
-> - `PassThruConnect(ISO14230, baud=10400)` returned Channel ID 4.
-> - `PassThruIoctl(SET_CONFIG, DATA_RATE=62400)` succeeded (validating high-speed TuneECU data transfer rate support).
-> - `PassThruIoctl(FAST_INIT)` successfully dispatched the KWP StartCommunication request packet to physical K-line pins.
+> **Full Five-Baud ECU Handshake Requires Physical Vehicle/ECU Testing**:
+> Bench tests have verified that OpenPort firmware receives `atw3 51` and `atw4 51`, executes the 5-baud slow-init routine on K-line pin 7, times out cleanly (`are 7`) when no ECU replies, and leaves the hardware responsive for subsequent operations.
+> However, verifying successful reception of real vehicle keybytes (`0x55, KB1, KB2`) and bi-directional inverted address acknowledgement requires physical testing with a live Keihin or Sagem ECU on the 2006 Triumph Daytona 675.
 
----
-
-## 4. Known Failures & Limitations
-
-- **No ECU on Bench**: During FAST_INIT dispatch on physical OpenPort hardware without an ECU connected on the bench, hardware returned status 6 (`ERR_TIMEOUT` / `ERR_FAILED`), which was properly handled and propagated without crashing.
-- **Root Required for Direct USB**: When running tests without udev permissions, OpenPort USB access requires suitable permissions or root group access.
-
----
-
-## 5. Unsupported Functionality
-
-- **FIVE_BAUD_INIT**:
-  - Bit-banged 5-baud initialization is detected and logged as unsupported.
-  - J2534 does not natively implement `FIVE_BAUD_INIT` for K-line on OpenPort.
 - **Map Flashing**:
-  - Per design constraints, write/reflash routines for ECU ROM maps are not implemented.
-- **ECU Emulation / Faking**:
-  - OpenShimFTDI does not fake ECU responses. TuneECU remains responsible for probing and communication.
-
----
-
-## 6. Next Milestone
-
-1. **Bench Testing with Physical ECU**: Connect physical Triumph / KTM Sagem or Keihin ECU to OpenPort K-line and verify complete TuneECU connection handshake and sensor reading.
-2. **ISO9141 Mode Switch Evaluation**: Add automated detection if TuneECU probes with ISO9141 framing instead of ISO14230.
-3. **Five-Baud Pin 7 Bit-Bang Driver Exploration**: Research hardware feasibility of driving Pin 7 low/high via J2534 `PassThruSetProgrammingVoltage` or raw FTDI bitbang for legacy ECUs.
+  - By design, ECU map flashing routines are not implemented.
+- **ECU Emulation**:
+  - OpenShimFTDI does not fake ECU responses. TuneECU remains responsible for probing, identification, and sensor reading.

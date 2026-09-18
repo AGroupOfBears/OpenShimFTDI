@@ -51,6 +51,17 @@ The following assumptions in `J2534_FEASIBILITY.md` lacked full support in the N
 - **CORRECTION**: J2534-1 defines `FIVE_BAUD_INIT`, but Nikola's driver strictly treats it as a stub. It is completely broken/missing from `j2534.c`.
 - **Finding**: Calling it will fail with `LIBUSB_ERROR_NOT_SUPPORTED` / `J2534_ERR_NOT_SUPPORTED`.
 
+- **CONFIRMED**: 2006–2012 Daytona uses diagnostic K-Line on pin 7.
+Old Daytona technical sources identify ISO9141-2 / 10.4 kbaud.
+TuneECU contains a real 5-baud ISO initialization path.
+Nikola currently cannot perform FIVE_BAUD_INIT.
+
+**VERY STRONG WORKING CONCLUSION**:
+Our 2006 Daytona compatibility target should support 5-baud init.
+
+**NOT YET CONFIRMED**:
+The exact low-level OpenPort firmware command we need to implement it.
+
 ### 2.2 `PassThruSetProgrammingVoltage` Missing
 - **CORRECTION**: To work around the lack of `FIVE_BAUD_INIT`, `J2534_FEASIBILITY.md` proposed using `PassThruSetProgrammingVoltage` to manually drop OBD Pin 7 (K-Line) to ground (`SHORT_TO_GROUND`).
 - **Finding**: Nikola's driver stubs this too. Calling `PassThruSetProgrammingVoltage` returns `J2534_ERR_NOT_SUPPORTED` (`j2534.c:1385`).

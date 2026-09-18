@@ -40,6 +40,11 @@ typedef struct {
     unsigned char Data[PM_DATA_LEN];
 } J2534_PASSTHRU_MSG;
 
+typedef struct {
+    unsigned long NumOfBytes;
+    unsigned char *BytePtr;
+} J2534_SBYTE_ARRAY;
+
 enum J2534_IoctlID {
     J2534_GET_CONFIG = 1,
     J2534_SET_CONFIG = 2,
@@ -745,6 +750,59 @@ static void handle_client_command(client_context_t *ctx, const ipc_header_t *hdr
             send_ipc_reply(ctx, hdr->command_id, hdr->seq_id, IPC_STATUS_OK, &resp, sizeof(resp));
         } else {
             send_ipc_reply(ctx, hdr->command_id, hdr->seq_id, IPC_STATUS_ERR_J2534_FAILED, NULL, 0);
+        }
+        break;
+    }
+
+    case IPC_CMD_FIVE_BAUD_INIT: {
+        if (!ctx->channel_connected) {
+            send_ipc_reply(ctx, hdr->command_id, hdr->seq_id, IPC_STATUS_ERR_NOT_CONNECTED, NULL, 0);
+            break;
+        }
+        if (hdr->payload_len < sizeof(ipc_req_five_baud_init_t)) {
+            send_ipc_reply(ctx, hdr->command_id, hdr->seq_id, IPC_STATUS_ERR_INVALID_PARAM, NULL, 0);
+            break;
+        }
+        const ipc_req_five_baud_init_t *req = (const ipc_req_five_baud_init_t *)payload;
+        log_timestamp();
+        printf("FIVE_BAUD_INIT target_address=0x%02X\n", req->target_address);
+
+        uint8_t target_addr = req->target_address;
+        J2534_SBYTE_ARRAY in_arr;
+        in_arr.NumOfBytes = 1;
+        in_arr.BytePtr = &target_addr;
+
+        uint8_t out_buf[16];
+        memset(out_buf, 0, sizeof(out_buf));
+        J2534_SBYTE_ARRAY out_arr;
+        out_arr.NumOfBytes = sizeof(out_buf);
+        out_arr.BytePtr = out_buf;
+
+        pthread_mutex_lock(&g_j2534_lock);
+        int32_t ret = g_j2534.PassThruIoctl(ctx->channel_id, J2534_FIVE_BAUD_INIT, &in_arr, &out_arr);
+        pthread_mutex_unlock(&g_j2534_lock);
+
+        log_timestamp();
+        printf("PassThruIoctl(FIVE_BAUD_INIT) -> %d (num_keybytes=%lu)\n", ret, out_arr.NumOfBytes);
+
+        if (ret == 0) {
+            if (out_arr.NumOfBytes > 0) {
+                log_hexdump("FIVE_BAUD_INIT-RX", out_arr.BytePtr, out_arr.NumOfBytes);
+            }
+            ipc_resp_five_baud_init_t resp;
+            memset(&resp, 0, sizeof(resp));
+            uint32_t copy_len = (uint32_t)out_arr.NumOfBytes;
+            if (copy_len > sizeof(resp.keybytes)) {
+                copy_len = sizeof(resp.keybytes);
+            }
+            resp.num_keybytes = copy_len;
+            memcpy(resp.keybytes, out_arr.BytePtr, copy_len);
+
+            send_ipc_reply(ctx, hdr->command_id, hdr->seq_id, IPC_STATUS_OK, &resp, sizeof(resp));
+        } else {
+            uint32_t err = (ret == 9 /* J2534_ERR_TIMEOUT */) ?
+                            IPC_STATUS_ERR_TIMEOUT : IPC_STATUS_ERR_J2534_FAILED;
+            send_ipc_reply(ctx, hdr->command_id, hdr->seq_id, err, NULL, 0);
         }
         break;
     }

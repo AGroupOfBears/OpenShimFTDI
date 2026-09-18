@@ -24,7 +24,8 @@ enum OpenShimIpcCommand {
     IPC_CMD_CLEAR_TX        = 10,
     IPC_CMD_FAST_INIT       = 11,
     IPC_CMD_START_FILTER    = 12,
-    IPC_CMD_RX_DATA         = 13   /* Unsolicited push of received/loopback bytes */
+    IPC_CMD_RX_DATA         = 13,  /* Unsolicited push of received/loopback bytes */
+    IPC_CMD_FIVE_BAUD_INIT  = 14
 };
 
 /* Status codes */
@@ -146,6 +147,20 @@ typedef struct {
     uint32_t rx_data_len;
     /* uint8_t rx_data[rx_data_len]; */
 } ipc_resp_fast_init_t;
+
+/* IPC_CMD_FIVE_BAUD_INIT payload */
+typedef struct {
+    uint32_t channel_id;
+    uint8_t  target_address;  /* 0x33 or 0xD5 */
+    uint8_t  pad[3];
+} ipc_five_baud_req_t;
+typedef ipc_five_baud_req_t ipc_req_five_baud_init_t;
+
+typedef struct {
+    uint32_t num_keybytes;
+    uint8_t  keybytes[16];
+} ipc_five_baud_resp_t;
+typedef ipc_five_baud_resp_t ipc_resp_five_baud_init_t;
 
 /* IPC_CMD_RX_DATA: Asynchronous push of received bytes (RX or loopback) */
 typedef struct {

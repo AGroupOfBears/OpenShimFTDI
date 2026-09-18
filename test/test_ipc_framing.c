@@ -74,6 +74,30 @@ int main(void)
     assert(memcmp(rx_buffer + sizeof(ipc_push_rx_data_t), echo_bytes, 4) == 0);
     printf("[PASS] Asynchronous Push RX data structure verified\n");
 
+    /* Test FIVE_BAUD_INIT Request & Response Payload */
+    assert(IPC_CMD_FIVE_BAUD_INIT == 14);
+    assert(sizeof(ipc_req_five_baud_init_t) == 8);
+    assert(sizeof(ipc_resp_five_baud_init_t) == 20);
+
+    ipc_req_five_baud_init_t req5;
+    req5.channel_id = 3;
+    req5.target_address = 0x33;
+    memset(req5.pad, 0, sizeof(req5.pad));
+    assert(req5.channel_id == 3);
+    assert(req5.target_address == 0x33);
+
+    ipc_resp_five_baud_init_t resp5;
+    memset(&resp5, 0, sizeof(resp5));
+    resp5.num_keybytes = 3;
+    resp5.keybytes[0] = 0x55;
+    resp5.keybytes[1] = 0x08;
+    resp5.keybytes[2] = 0x08;
+    assert(resp5.num_keybytes == 3);
+    assert(resp5.keybytes[0] == 0x55);
+    assert(resp5.keybytes[1] == 0x08);
+    assert(resp5.keybytes[2] == 0x08);
+    printf("[PASS] FIVE_BAUD_INIT request and response payloads verified\n");
+
     /* Test Status Codes */
     assert(IPC_STATUS_OK == 0);
     assert(IPC_STATUS_ERR_NOT_CONNECTED == 1);

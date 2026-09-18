@@ -32,6 +32,11 @@ typedef enum {
     FAST_INIT_WAIT_START_COMM
 } FastInitState;
 
+typedef enum {
+    FIVE_BAUD_STATE_IDLE = 0,
+    FIVE_BAUD_STATE_AWAITING_INIT = 1
+} FiveBaudState;
+
 typedef struct ShimState {
     BOOL opened;
     FT_HANDLE handle;
@@ -64,6 +69,16 @@ typedef struct ShimState {
     BackendMode backend_mode;
     FastInitState fast_init_state;
     DWORD break_toggle_count;
+
+    /* 5-baud break detection & handshake */
+    uint32_t break_bit_count;
+    uint32_t break_bit_accumulator;
+    DWORD    last_break_time;
+    FiveBaudState five_baud_state;
+    uint8_t  expected_init;
+    uint8_t  expected_ack;
+    DWORD    five_baud_timestamp;
+    BOOL     five_baud_rx_ready;
 } ShimState;
 
 typedef struct IpcClient {
@@ -129,6 +144,14 @@ static void reset_open_state_locked(void)
     g_state.break_on = FALSE;
     g_state.fast_init_state = FAST_INIT_IDLE;
     g_state.break_toggle_count = 0;
+    g_state.break_bit_count = 0;
+    g_state.break_bit_accumulator = 0;
+    g_state.last_break_time = 0;
+    g_state.five_baud_state = FIVE_BAUD_STATE_IDLE;
+    g_state.expected_init = 0;
+    g_state.expected_ack = 0;
+    g_state.five_baud_timestamp = 0;
+    g_state.five_baud_rx_ready = FALSE;
 
     const char *env_backend = getenv("OPENSHIM_BACKEND");
     if (env_backend != NULL && _stricmp(env_backend, "loopback") == 0) {
@@ -863,6 +886,58 @@ FT_STATUS WINAPI FT_Write(FT_HANDLE ftHandle, LPVOID lpBuffer,
 
     const BYTE *data = (const BYTE *)lpBuffer;
 
+    /* Check five-baud handshake timeout/reset */
+    if (g_state.five_baud_state == FIVE_BAUD_STATE_AWAITING_INIT) {
+        DWORD elapsed = GetTickCount() - g_state.five_baud_timestamp;
+        if (elapsed > 5000) {
+            log_message("[FIVE_BAUD] Handshake state timed out (%lu ms > 5000 ms); resetting to IDLE",
+                        (unsigned long)elapsed);
+            g_state.five_baud_state = FIVE_BAUD_STATE_IDLE;
+        }
+    }
+
+    if (g_state.five_baud_state == FIVE_BAUD_STATE_AWAITING_INIT) {
+        if (dwBytesToWrite == 1 && data[0] == g_state.expected_init) {
+            /* This is TuneECU transmitting inverted keybyte 2 (~KB2) */
+            log_message("[FIVE_BAUD] Intercepted expected ~KB2 write (0x%02X); virtualizing handshake",
+                        data[0]);
+
+            /* 1. Do NOT transmit to hardware / IPC */
+            *lpdwBytesWritten = 1;
+            actual = 1;
+
+            /* 2. Provide expected FTDI write echo locally in RX FIFO */
+            fifo_push_locked(data, 1);
+
+            /* 3. Inject expected_ack (~Address) into RX FIFO */
+            BYTE ack = g_state.expected_ack;
+            fifo_push_locked(&ack, 1);
+            log_message("[FIVE_BAUD] Injected write echo 0x%02X and expected_ack 0x%02X into RX FIFO",
+                        data[0], ack);
+
+            /* 4. Signal FT_EVENT_RXCHAR if registered */
+            if (g_state.rx_count > 0 && (g_state.event_mask & FT_EVENT_RXCHAR) != 0) {
+                event_to_signal = g_state.event_handle;
+            }
+
+            /* 5. Clear five-baud handshake state */
+            g_state.five_baud_state = FIVE_BAUD_STATE_IDLE;
+
+            LeaveCriticalSection(&g_state_lock);
+            if (event_to_signal != NULL) {
+                SetEvent(event_to_signal);
+            }
+            log_transfer("FT_Write", ftHandle, data, dwBytesToWrite, actual, FT_OK);
+            return FT_OK;
+        } else {
+            /* Unrelated write or wrong ~KB2: DO NOT SUPPRESS. Reset handshake state */
+            log_message("[FIVE_BAUD] Write (%lu bytes, byte[0]=0x%02X) did not match expected_init (0x%02X); not suppressing, resetting to IDLE",
+                        (unsigned long)dwBytesToWrite, data[0], g_state.expected_init);
+            g_state.five_baud_state = FIVE_BAUD_STATE_IDLE;
+            /* Fall through to normal write path */
+        }
+    }
+
     /* Check KWP FAST_INIT sequence recognition */
     if (g_state.backend_mode == BACKEND_MODE_IPC &&
         g_state.fast_init_state == FAST_INIT_BREAK_OFF &&
@@ -1006,9 +1081,141 @@ SIMPLE_HANDLE_SETTER(FT_ClrDtr, dtr, FALSE, ", dtr=0")
 SIMPLE_HANDLE_SETTER(FT_SetRts, rts, TRUE, ", rts=1")
 SIMPLE_HANDLE_SETTER(FT_ClrRts, rts, FALSE, ", rts=0")
 
+static void execute_five_baud_init_locked(uint8_t target_address, HANDLE *event_to_signal)
+{
+    if (g_state.backend_mode == BACKEND_MODE_LOOPBACK) {
+        uint8_t kb1, kb2;
+        if (target_address == 0x33) {
+            kb1 = 0x08;
+            kb2 = 0x08;
+        } else if (target_address == 0xD5) {
+            kb1 = 0xD9;
+            kb2 = 0x8F;
+        } else {
+            kb1 = 0x08;
+            kb2 = 0x08;
+        }
+        BYTE resp_bytes[3] = { 0x55, kb1, kb2 };
+        fifo_push_locked(resp_bytes, 3);
+
+        g_state.five_baud_state = FIVE_BAUD_STATE_AWAITING_INIT;
+        g_state.expected_init = (uint8_t)(kb2 ^ 0xFF);
+        g_state.expected_ack = (uint8_t)(target_address ^ 0xFF);
+        g_state.five_baud_timestamp = GetTickCount();
+        g_state.five_baud_rx_ready = TRUE;
+
+        log_message("[FIVE_BAUD] Loopback: queued [0x55, 0x%02X, 0x%02X], expected_init=0x%02X, expected_ack=0x%02X",
+                    kb1, kb2, g_state.expected_init, g_state.expected_ack);
+
+        if (g_state.rx_count > 0 && (g_state.event_mask & FT_EVENT_RXCHAR) != 0) {
+            *event_to_signal = g_state.event_handle;
+        }
+        return;
+    }
+
+    /* IPC backend mode */
+    FT_STATUS status = ensure_ipc_channel_connected_locked();
+    if (status != FT_OK) {
+        log_message("[FIVE_BAUD] Failed to connect IPC channel (status=%lu)", (unsigned long)status);
+        return;
+    }
+
+    ipc_req_five_baud_init_t req;
+    req.channel_id = g_ipc.channel_id;
+    req.target_address = target_address;
+    memset(req.pad, 0, sizeof(req.pad));
+
+    LeaveCriticalSection(&g_state_lock);
+
+    ipc_header_t resp_hdr;
+    ipc_resp_five_baud_init_t resp;
+    status = ipc_send_command_sync(IPC_CMD_FIVE_BAUD_INIT, &req, sizeof(req),
+                                   &resp_hdr, &resp, sizeof(resp));
+
+    EnterCriticalSection(&g_state_lock);
+
+    if (status == FT_OK && resp_hdr.status == IPC_STATUS_OK && resp.num_keybytes >= 2) {
+        uint8_t kb1 = 0, kb2 = 0;
+        BYTE norm_bytes[3];
+        norm_bytes[0] = 0x55;
+
+        if (resp.keybytes[0] == 0x55 && resp.num_keybytes >= 3) {
+            kb1 = resp.keybytes[1];
+            kb2 = resp.keybytes[2];
+            norm_bytes[1] = kb1;
+            norm_bytes[2] = kb2;
+        } else {
+            kb1 = resp.keybytes[0];
+            kb2 = resp.keybytes[1];
+            norm_bytes[1] = kb1;
+            norm_bytes[2] = kb2;
+        }
+
+        fifo_push_locked(norm_bytes, 3);
+
+        g_state.five_baud_state = FIVE_BAUD_STATE_AWAITING_INIT;
+        g_state.expected_init = (uint8_t)(kb2 ^ 0xFF);
+        g_state.expected_ack = (uint8_t)(target_address ^ 0xFF);
+        g_state.five_baud_timestamp = GetTickCount();
+        g_state.five_baud_rx_ready = TRUE;
+
+        log_message("[FIVE_BAUD] IPC success: queued [0x55, 0x%02X, 0x%02X], expected_init=0x%02X, expected_ack=0x%02X",
+                    kb1, kb2, g_state.expected_init, g_state.expected_ack);
+
+        if (g_state.rx_count > 0 && (g_state.event_mask & FT_EVENT_RXCHAR) != 0) {
+            *event_to_signal = g_state.event_handle;
+        }
+    } else {
+        log_message("[FIVE_BAUD] IPC call failed (transport_status=%lu, ipc_status=%u, num_keybytes=%u)",
+                    (unsigned long)status, resp_hdr.status, resp.num_keybytes);
+    }
+}
+
+static void handle_break_bit_locked(uint8_t bit, HANDLE *event_to_signal)
+{
+    DWORD now = GetTickCount();
+    if (g_state.break_bit_count > 0 && (now - g_state.last_break_time) > 1500) {
+        log_message("[FIVE_BAUD] Break train timed out (>1500ms); resetting accumulator");
+        g_state.break_bit_count = 0;
+        g_state.break_bit_accumulator = 0;
+    }
+
+    if (g_state.break_bit_count == 0) {
+        if (bit == 1) {
+            g_state.break_bit_accumulator = 1;
+            g_state.break_bit_count = 1;
+            g_state.last_break_time = now;
+        }
+        return;
+    }
+
+    g_state.break_bit_accumulator |= ((uint32_t)bit << g_state.break_bit_count);
+    g_state.break_bit_count++;
+    g_state.last_break_time = now;
+
+    if (g_state.break_bit_count == 11) {
+        uint32_t pat = g_state.break_bit_accumulator;
+        g_state.break_bit_count = 0;
+        g_state.break_bit_accumulator = 0;
+
+        if ((pat & 0x03) == 0x01 && ((pat >> 10) & 0x01) == 0x01) {
+            uint8_t addr = (uint8_t)((pat >> 2) & 0xFF);
+            if (addr == 0x33 || addr == 0xD5) {
+                log_message("[FIVE_BAUD] Recognized 11-bit 5-baud sequence for address 0x%02X", addr);
+                execute_five_baud_init_locked(addr, event_to_signal);
+            } else {
+                log_message("[FIVE_BAUD] 11-bit sequence framing valid but unhandled address 0x%02X", addr);
+            }
+        } else {
+            log_message("[FIVE_BAUD] 11-bit sequence framing invalid: pattern=0x%03X", pat);
+        }
+    }
+}
+
 FT_STATUS WINAPI FT_SetBreakOn(FT_HANDLE ftHandle)
 {
     FT_STATUS status;
+    HANDLE event_to_signal = NULL;
     EnterCriticalSection(&g_state_lock);
     status = check_handle_locked(ftHandle);
     if (status == FT_OK) {
@@ -1018,13 +1225,13 @@ FT_STATUS WINAPI FT_SetBreakOn(FT_HANDLE ftHandle)
             log_message("[FAST_INIT] Transitioned to FAST_INIT_BREAK_ON");
         }
 
-        /* Detect 5-baud init bit-banging */
-        g_state.break_toggle_count++;
-        if (g_state.break_toggle_count >= 3 && g_state.baud_rate != 360) {
-            log_message("[FIVE_BAUD_INIT] Detected 5-baud bit-bang initialization sequence; unsupported by J2534 backend. Logging explicit unsupported condition.");
-        }
+        /* 5-baud break bit-banging detection (Break On = Space = 0) */
+        handle_break_bit_locked(0, &event_to_signal);
     }
     LeaveCriticalSection(&g_state_lock);
+    if (event_to_signal != NULL) {
+        SetEvent(event_to_signal);
+    }
     log_message("FT_SetBreakOn(handle=%p) -> status=%lu, break=on",
                 ftHandle, (unsigned long)status);
     return status;
@@ -1033,6 +1240,7 @@ FT_STATUS WINAPI FT_SetBreakOn(FT_HANDLE ftHandle)
 FT_STATUS WINAPI FT_SetBreakOff(FT_HANDLE ftHandle)
 {
     FT_STATUS status;
+    HANDLE event_to_signal = NULL;
     EnterCriticalSection(&g_state_lock);
     status = check_handle_locked(ftHandle);
     if (status == FT_OK) {
@@ -1041,8 +1249,14 @@ FT_STATUS WINAPI FT_SetBreakOff(FT_HANDLE ftHandle)
             g_state.fast_init_state = FAST_INIT_BREAK_OFF;
             log_message("[FAST_INIT] Transitioned to FAST_INIT_BREAK_OFF");
         }
+
+        /* 5-baud break bit-banging detection (Break Off = Mark = 1) */
+        handle_break_bit_locked(1, &event_to_signal);
     }
     LeaveCriticalSection(&g_state_lock);
+    if (event_to_signal != NULL) {
+        SetEvent(event_to_signal);
+    }
     log_message("FT_SetBreakOff(handle=%p) -> status=%lu, break=off",
                 ftHandle, (unsigned long)status);
     return status;
@@ -1134,10 +1348,16 @@ FT_STATUS WINAPI FT_Purge(FT_HANDLE ftHandle, DWORD dwMask)
     if (status == FT_OK) {
         rx_before = g_state.rx_count;
         tx_before = g_state.tx_count;
-        if ((dwMask & FT_PURGE_RX) != 0) {
-            g_state.rx_head = 0;
-            g_state.rx_tail = 0;
-            g_state.rx_count = 0;
+        if (g_state.five_baud_rx_ready) {
+            /* Preserve 5-baud keybytes in RX FIFO */
+            g_state.five_baud_rx_ready = FALSE;
+            log_message("[FIVE_BAUD] FT_Purge: Preserved 5-baud keybytes in RX FIFO");
+        } else {
+            if ((dwMask & FT_PURGE_RX) != 0) {
+                g_state.rx_head = 0;
+                g_state.rx_tail = 0;
+                g_state.rx_count = 0;
+            }
         }
         if ((dwMask & FT_PURGE_TX) != 0) {
             g_state.tx_count = 0;
