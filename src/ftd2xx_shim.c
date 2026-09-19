@@ -985,6 +985,7 @@ FT_STATUS WINAPI FT_Write(FT_HANDLE ftHandle, LPVOID lpBuffer,
             actual = dwBytesToWrite;
 
             /* Push echo of the 0x81 request into local RX FIFO so TuneECU can read it */
+            log_message("[LOCAL_ECHO] FAST_INIT synthetic local echo");
             fifo_push_locked(data, dwBytesToWrite);
 
             /* If helper returned fast-init response bytes, queue them into RX FIFO */
@@ -1054,6 +1055,7 @@ FT_STATUS WINAPI FT_Write(FT_HANDLE ftHandle, LPVOID lpBuffer,
             *lpdwBytesWritten = actual;
             // Provide instant synthetic echo to satisfy TuneECU's FTDI expectations,
             // because we are dropping hardware TX Loopback in the helper.
+            log_message("[LOCAL_ECHO] FT_Write IPC synthetic local echo");
             fifo_push_locked(data, actual);
             if (actual > 0 && (g_state.event_mask & FT_EVENT_RXCHAR) != 0) {
                 event_to_signal = g_state.event_handle;
@@ -1104,7 +1106,8 @@ static void execute_five_baud_init_locked(uint8_t target_address, HANDLE *event_
             kb2 = 0x08;
         }
         BYTE resp_bytes[3] = { 0x55, kb1, kb2 };
-        fifo_push_locked(resp_bytes, 3);
+        log_message("[LOCAL_ECHO] 5-BAUD synthetic local response");
+            fifo_push_locked(resp_bytes, 3);
 
         g_state.five_baud_state = FIVE_BAUD_STATE_AWAITING_INIT;
         g_state.expected_init = (uint8_t)(kb2 ^ 0xFF);
@@ -1197,6 +1200,11 @@ static void handle_break_bit_locked(uint8_t bit, HANDLE *event_to_signal)
         return;
     }
 
+    if (g_state.fast_init_state != FAST_INIT_IDLE) {
+        // If we are actively in a FAST_INIT initialization, ignore break bits as 5-baud
+        return;
+    }
+
     if (bit != g_state.last_break_val) {
         DWORD time_spent = now - g_state.last_break_time;
         // ~200ms per bit (5 baud)
@@ -1209,8 +1217,7 @@ static void handle_break_bit_locked(uint8_t bit, HANDLE *event_to_signal)
             num_bits = 0;
             is_first = 1;
             log_message("[FIVE_BAUD] Initial transition to LOW detected");
-            g_state.fast_init_state = FAST_INIT_BREAK_ON;
-        }
+                    }
         
         if (num_bits == 0 && !is_first) num_bits = 1; // Catch transitions that were too fast
         
@@ -1267,7 +1274,7 @@ FT_STATUS WINAPI FT_SetBreakOn(FT_HANDLE ftHandle)
     if (status == FT_OK) {
         g_state.break_on = TRUE;
         if (g_state.fast_init_state == FAST_INIT_BAUD_360) {
-            g_state.fast_init_state = FAST_INIT_BREAK_ON;
+                        g_state.fast_init_state = FAST_INIT_BREAK_ON;
             log_message("[FAST_INIT] Transitioned to FAST_INIT_BREAK_ON");
         }
 
@@ -1317,6 +1324,8 @@ FT_STATUS WINAPI FT_SetBaudRate(FT_HANDLE ftHandle, DWORD dwBaudRate)
     status = check_handle_locked(ftHandle);
     if (status == FT_OK) {
         g_state.baud_rate = dwBaudRate;
+    g_state.break_bit_count = 0;
+    g_state.break_bit_accumulator = 0;
 
         if (dwBaudRate == 360) {
             /* KWP FAST_INIT sequence start: 360 baud low pulse */
@@ -1395,6 +1404,12 @@ FT_STATUS WINAPI FT_Purge(FT_HANDLE ftHandle, DWORD dwMask)
     EnterCriticalSection(&g_state_lock);
     status = check_handle_locked(ftHandle);
     if (status == FT_OK) {
+        if (g_state.break_bit_count == 9 && g_state.last_break_val == 1) {
+            // TuneECU calls FT_Purge ~7ms after the final HIGH transition.
+            // Explicitly finalize the frame by assuming the Stop bit.
+            g_state.break_bit_accumulator |= (1 << 9);
+            g_state.break_bit_count = 10;
+        }
         if (g_state.break_bit_count > 0 && g_state.last_break_val == 1) {
             check_five_baud_completion_locked(&event_to_signal);
         }

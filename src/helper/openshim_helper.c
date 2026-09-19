@@ -703,8 +703,36 @@ static void handle_client_command(client_context_t *ctx, const ipc_header_t *hdr
         pthread_mutex_unlock(&g_j2534_lock);
 
         log_timestamp();
-        printf("PassThruIoctl(FAST_INIT) -> %d (rx_len=%lu, RxStatus=0x%08X, ExtraDataIndex=%lu)\n", 
-               ret, (unsigned long)rxMsg.DataSize, (unsigned int)rxMsg.RxStatus, (unsigned long)rxMsg.ExtraDataIndex);
+        printf("[FAST_INIT_HW]\n");
+        printf("  ChannelID: %lu\n", (unsigned long)ctx->channel_id);
+        printf("  input DataSize: %lu\n", (unsigned long)req->data_len);
+        printf("  input bytes: ");
+        for (uint32_t i = 0; i < req->data_len; i++) {
+            printf("%02X ", tx_data[i]);
+        }
+        printf("\n");
+        printf("  PassThruIoctl return code: %d", ret);
+        if (ret == 9) printf(" (ERR_TIMEOUT)");
+        if (ret == 0) printf(" (STATUS_NOERROR)");
+        printf("\n");
+        printf("  output DataSize: %lu\n", (unsigned long)rxMsg.DataSize);
+        printf("  output ProtocolID: %lu\n", (unsigned long)rxMsg.ProtocolID);
+        printf("  output RxStatus: 0x%08X\n", (unsigned int)rxMsg.RxStatus);
+        printf("  output ExtraDataIndex: %lu\n", (unsigned long)rxMsg.ExtraDataIndex);
+        
+        if (rxMsg.DataSize > 0) {
+            printf("  output bytes: ");
+            for (uint32_t i = 0; i < rxMsg.DataSize; i++) {
+                printf("%02X ", rxMsg.Data[i]);
+            }
+            printf("\n");
+            
+            if (rxMsg.RxStatus & 0x00000001) {
+                log_hexdump("HW_TX_INDICATION", rxMsg.Data, rxMsg.DataSize);
+            } else {
+                log_hexdump("ECU_RX", rxMsg.Data, rxMsg.DataSize);
+            }
+        }
 
         if (ret == 0) {
             if (rxMsg.DataSize > 0) {

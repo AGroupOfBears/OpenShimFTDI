@@ -53,7 +53,7 @@ int main(void)
 {
     printf("=== Running OpenShimFTDI 5-Baud Break Decode & Handshake Virtualization Tests ===\n");
 
-    HMODULE module = LoadLibraryA("FTD2XX.dll");
+    HMODULE module = LoadLibraryA("..\\FTD2XX.dll");
     if (module == NULL) {
         fprintf(stderr, "FAIL: LoadLibraryA: error %lu\n", (unsigned long)GetLastError());
         return 1;
