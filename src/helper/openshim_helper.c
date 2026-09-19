@@ -14,6 +14,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <time.h>
+#include <stdarg.h>
 
 #include "../../include/openshim_ipc.h"
 #define J2534_TX_MSG_TYPE 0x00000001
@@ -148,6 +149,44 @@ typedef struct {
     unsigned long current_baud;
 } client_context_t;
 
+
+static FILE *g_log_file = NULL;
+
+static void init_logging(void)
+{
+    const char *env_path = getenv("OPENSHIM_HELPER_LOG");
+    const char *paths[] = {
+        env_path,
+        "/home/spoqn/Desktop/TuneECUv2.5.5/openshim-helper.log",
+        "openshim-helper.log",
+        NULL
+    };
+    for (int i = 0; paths[i] != NULL; i++) {
+        if (paths[i][0] == '\0') continue;
+        g_log_file = fopen(paths[i], "a");
+        if (g_log_file) {
+            fprintf(g_log_file, "\n=== OpenShim Helper Session Started ===\n");
+            fflush(g_log_file);
+            break;
+        }
+    }
+}
+
+static void log_print(const char *fmt, ...)
+{
+    va_list args1, args2;
+    va_start(args1, fmt);
+    va_copy(args2, args1);
+    vprintf(fmt, args1);
+    fflush(stdout);
+    va_end(args1);
+    if (g_log_file) {
+        vfprintf(g_log_file, fmt, args2);
+        fflush(g_log_file);
+    }
+    va_end(args2);
+}
+
 static volatile sig_atomic_t g_running = 1;
 
 static void sig_handler(int signum)
@@ -164,22 +203,21 @@ static void log_timestamp(void)
     localtime_r(&ts.tv_sec, &tm_info);
     char time_str[32];
     strftime(time_str, sizeof(time_str), "%Y-%m-%d %H:%M:%S", &tm_info);
-    printf("[%s.%03ld] [helper] ", time_str, ts.tv_nsec / 1000000);
+    log_print("[%s.%03ld] [helper] ", time_str, ts.tv_nsec / 1000000);
 }
 
 static void log_hexdump(const char *prefix, const uint8_t *data, size_t len)
 {
     log_timestamp();
-    printf("%s (len=%zu):", prefix, len);
+    log_print("%s (len=%zu):", prefix, len);
     if (len == 0 || data == NULL) {
-        printf(" <empty>\n");
+        log_print(" <empty>\n");
         return;
     }
     for (size_t i = 0; i < len; ++i) {
-        printf(" %02X", data[i]);
+        log_print(" %02X", data[i]);
     }
-    printf("\n");
-    fflush(stdout);
+    log_print("\n");
 }
 
 static int send_all(int fd, const void *buf, size_t len)
@@ -267,7 +305,7 @@ static void *rx_worker_thread(void *arg)
 {
     client_context_t *ctx = (client_context_t *)arg;
     log_timestamp();
-    printf("RX worker thread started for channel=%lu\n", ctx->channel_id);
+    log_print("RX worker thread started for channel=%lu\n", ctx->channel_id);
 
     while (ctx->rx_thread_running && g_running) {
         if (!ctx->channel_connected || ctx->channel_id == 0) {
@@ -284,28 +322,25 @@ static void *rx_worker_thread(void *arg)
         pthread_mutex_unlock(&g_j2534_lock);
 
         if (ret == 0 && num_msgs > 0 && msg.DataSize > 0) {
-            const char *label = "UNKNOWN";
             if (msg.RxStatus & J2534_TX_MSG_TYPE) {
-                label = "HW_TX_INDICATION";
-            } else if (msg.RxStatus == 0) {
-                label = "ECU_RX";
-            } else {
-                label = "HW_RX";
-            }
-            log_timestamp();
-            printf("[%s] Chan=%lu Prot=0x%04X, Status=0x%08X (flags=%04lX), TxFlg=%08X, DataSize=%lu\n",
-                   label, ctx->channel_id, (unsigned int)msg.ProtocolID, (unsigned int)msg.RxStatus, msg.RxStatus & 0xFFFF, (unsigned int)msg.TxFlags, msg.DataSize);
-            log_hexdump(label, msg.Data, msg.DataSize);
-
-            if (msg.RxStatus & 0x00000001) { /* J2534_TX_MSG_TYPE */
+                log_timestamp();
+                log_print("[HW_TX_INDICATION] Chan=%lu Status=0x%08X (flags=%04lX), TxFlg=%08X, DataSize=%lu\n",
+                          ctx->channel_id, (unsigned int)msg.RxStatus, msg.RxStatus & 0xFFFF, (unsigned int)msg.TxFlags, msg.DataSize);
+                log_hexdump("[HW_TX_INDICATION]", msg.Data, msg.DataSize);
                 // Drop J2534 hardware TX echoes. The shim provides synchronous synthetic 
                 // echo internally to satisfy TuneECU's FTDI expectations instantly.
                 continue;
             }
+
+            log_timestamp();
+            log_print("[ECU_RX] Chan=%lu Status=0x%08X (flags=%04lX), TxFlg=%08X, DataSize=%lu\n",
+                      ctx->channel_id, (unsigned int)msg.RxStatus, msg.RxStatus & 0xFFFF, (unsigned int)msg.TxFlags, msg.DataSize);
+            log_hexdump("[ECU_RX]", msg.Data, msg.DataSize);
+
             if (push_ipc_rx_data(ctx, ctx->channel_id, (uint32_t)msg.RxStatus,
                                  (uint32_t)msg.Timestamp, msg.Data, (uint32_t)msg.DataSize) != 0) {
                 log_timestamp();
-                printf("Failed to push RX data to client socket; exiting RX thread\n");
+                log_print("[ERROR] Failed to push RX data to client socket; exiting RX thread\n");
                 break;
             }
         } else {
@@ -314,7 +349,7 @@ static void *rx_worker_thread(void *arg)
     }
 
     log_timestamp();
-    printf("RX worker thread terminating for channel=%lu\n", ctx->channel_id);
+    log_print("RX worker thread terminating for channel=%lu\n", ctx->channel_id);
     return NULL;
 }
 
@@ -385,7 +420,7 @@ static int load_j2534_library(const char *custom_path)
     }
 
     log_timestamp();
-    printf("Successfully loaded J2534 library from: %s\n", loaded_path);
+    log_print("Successfully loaded J2534 library from: %s\n", loaded_path);
     return 0;
 }
 
@@ -393,7 +428,7 @@ static int load_j2534_library(const char *custom_path)
 static void handle_client_command(client_context_t *ctx, const ipc_header_t *hdr, const uint8_t *payload)
 {
     log_timestamp();
-    printf("RECV cmd=%u seq=%u len=%u\n", hdr->command_id, hdr->seq_id, hdr->payload_len);
+    log_print("RECV cmd=%u seq=%u len=%u\n", hdr->command_id, hdr->seq_id, hdr->payload_len);
 
     switch (hdr->command_id) {
     case IPC_CMD_PING: {
@@ -404,7 +439,7 @@ static void handle_client_command(client_context_t *ctx, const ipc_header_t *hdr
     case IPC_CMD_OPEN: {
         if (ctx->device_open) {
             log_timestamp();
-            printf("OPEN: device already open (id=%lu)\n", ctx->device_id);
+            log_print("OPEN: device already open (id=%lu)\n", ctx->device_id);
             ipc_resp_open_t resp;
             memset(&resp, 0, sizeof(resp));
             resp.device_id = (uint32_t)ctx->device_id;
@@ -420,7 +455,7 @@ static void handle_client_command(client_context_t *ctx, const ipc_header_t *hdr
         pthread_mutex_unlock(&g_j2534_lock);
 
         log_timestamp();
-        printf("PassThruOpen() -> %d (dev_id=%lu)\n", ret, dev_id);
+        log_print("PassThruOpen() -> %d (dev_id=%lu)\n", ret, dev_id);
 
         if (ret == 0) {
             ctx->device_open = true;
@@ -473,7 +508,7 @@ static void handle_client_command(client_context_t *ctx, const ipc_header_t *hdr
         int32_t ret = g_j2534.PassThruConnect(ctx->device_id, req->protocol_id, req->flags,
                                               req->baud_rate, &ch_id);
         log_timestamp();
-        printf("PassThruConnect(dev=%lu, proto=%u, flags=0x%x, baud=%u) -> %d (ch_id=%lu)\n",
+        log_print("[CHANNEL] PassThruConnect(dev=%lu, proto=%u, flags=0x%x, baud=%u) -> %d (ch_id=%lu)\n",
                ctx->device_id, req->protocol_id, req->flags, req->baud_rate, ret, ch_id);
 
         if (ret == 0) {
@@ -491,7 +526,7 @@ static void handle_client_command(client_context_t *ctx, const ipc_header_t *hdr
             cfgList.ConfigPtr = &cfg;
             int32_t loop_ret = g_j2534.PassThruIoctl(ch_id, J2534_SET_CONFIG, &cfgList, NULL);
             log_timestamp();
-            printf("Set LOOPBACK=1 -> %d\n", loop_ret);
+            log_print("Set LOOPBACK=1 -> %d\n", loop_ret);
 
             /* Install Pass-All filter (mask=0, pattern=0) */
             J2534_PASSTHRU_MSG maskMsg;
@@ -510,7 +545,7 @@ static void handle_client_command(client_context_t *ctx, const ipc_header_t *hdr
             int32_t filter_ret = g_j2534.PassThruStartMsgFilter(ch_id, 1 /* PASS_FILTER */,
                                                                &maskMsg, &patternMsg, NULL, &filterId);
             log_timestamp();
-            printf("Start Pass-All Filter -> %d (filter_id=%lu)\n", filter_ret, filterId);
+            log_print("[FILTER] Start Pass-All Filter -> %d (filter_id=%lu)\n", filter_ret, filterId);
             pthread_mutex_unlock(&g_j2534_lock);
 
             /* Start background RX worker thread */
@@ -561,7 +596,7 @@ static void handle_client_command(client_context_t *ctx, const ipc_header_t *hdr
         pthread_mutex_unlock(&g_j2534_lock);
 
         log_timestamp();
-        printf("PassThruIoctl(SET_CONFIG, param=%u, val=%u) -> %d\n", req->parameter, req->value, ret);
+        log_print("PassThruIoctl(SET_CONFIG, param=%u, val=%u) -> %d\n", req->parameter, req->value, ret);
         if (ret == 0 && req->parameter == CONFIG_DATA_RATE) {
             ctx->current_baud = req->value;
         }
@@ -579,7 +614,7 @@ static void handle_client_command(client_context_t *ctx, const ipc_header_t *hdr
         pthread_mutex_unlock(&g_j2534_lock);
 
         log_timestamp();
-        printf("PassThruIoctl(CLEAR_RX_BUFFER) -> %d\n", ret);
+        log_print("PassThruIoctl(CLEAR_RX_BUFFER) -> %d\n", ret);
         send_ipc_reply(ctx, hdr->command_id, hdr->seq_id, ret == 0 ? IPC_STATUS_OK : IPC_STATUS_ERR_J2534_FAILED, NULL, 0);
         break;
     }
@@ -594,7 +629,7 @@ static void handle_client_command(client_context_t *ctx, const ipc_header_t *hdr
         pthread_mutex_unlock(&g_j2534_lock);
 
         log_timestamp();
-        printf("PassThruIoctl(CLEAR_TX_BUFFER) -> %d\n", ret);
+        log_print("PassThruIoctl(CLEAR_TX_BUFFER) -> %d\n", ret);
         send_ipc_reply(ctx, hdr->command_id, hdr->seq_id, ret == 0 ? IPC_STATUS_OK : IPC_STATUS_ERR_J2534_FAILED, NULL, 0);
         break;
     }
@@ -614,7 +649,10 @@ static void handle_client_command(client_context_t *ctx, const ipc_header_t *hdr
             break;
         }
         const uint8_t *data = payload + sizeof(ipc_req_write_t);
-        log_hexdump("WRITE-TX", data, req->data_len);
+        log_timestamp();
+        log_print("[J2534_TX] Chan=%lu Prot=0x%04X, TxFlags=0x%08X, DataSize=%u\n",
+                  ctx->channel_id, (unsigned int)ctx->protocol_id, (unsigned int)req->tx_flags, req->data_len);
+        log_hexdump("[J2534_TX]", data, req->data_len);
 
         J2534_PASSTHRU_MSG msg;
         memset(&msg, 0, sizeof(msg));
@@ -629,7 +667,7 @@ static void handle_client_command(client_context_t *ctx, const ipc_header_t *hdr
         pthread_mutex_unlock(&g_j2534_lock);
 
         log_timestamp();
-        printf("PassThruWriteMsgs() -> %d (num=%lu)\n", ret, num_msgs);
+        log_print("[J2534_TX_IND] PassThruWriteMsgs -> %d (num=%lu)\n", ret, num_msgs);
 
         if (ret == 0) {
             ipc_resp_write_t resp;
@@ -703,29 +741,29 @@ static void handle_client_command(client_context_t *ctx, const ipc_header_t *hdr
         pthread_mutex_unlock(&g_j2534_lock);
 
         log_timestamp();
-        printf("[FAST_INIT_HW]\n");
-        printf("  ChannelID: %lu\n", (unsigned long)ctx->channel_id);
-        printf("  input DataSize: %lu\n", (unsigned long)req->data_len);
-        printf("  input bytes: ");
+        log_print("[FAST_INIT_HW]\n");
+        log_print("  ChannelID: %lu\n", (unsigned long)ctx->channel_id);
+        log_print("  input DataSize: %lu\n", (unsigned long)req->data_len);
+        log_print("  input bytes: ");
         for (uint32_t i = 0; i < req->data_len; i++) {
-            printf("%02X ", tx_data[i]);
+            log_print("%02X ", tx_data[i]);
         }
-        printf("\n");
-        printf("  PassThruIoctl return code: %d", ret);
-        if (ret == 9) printf(" (ERR_TIMEOUT)");
-        if (ret == 0) printf(" (STATUS_NOERROR)");
-        printf("\n");
-        printf("  output DataSize: %lu\n", (unsigned long)rxMsg.DataSize);
-        printf("  output ProtocolID: %lu\n", (unsigned long)rxMsg.ProtocolID);
-        printf("  output RxStatus: 0x%08X\n", (unsigned int)rxMsg.RxStatus);
-        printf("  output ExtraDataIndex: %lu\n", (unsigned long)rxMsg.ExtraDataIndex);
+        log_print("\n");
+        log_print("  PassThruIoctl return code: %d", ret);
+        if (ret == 9) log_print(" (ERR_TIMEOUT)");
+        if (ret == 0) log_print(" (STATUS_NOERROR)");
+        log_print("\n");
+        log_print("  output DataSize: %lu\n", (unsigned long)rxMsg.DataSize);
+        log_print("  output ProtocolID: %lu\n", (unsigned long)rxMsg.ProtocolID);
+        log_print("  output RxStatus: 0x%08X\n", (unsigned int)rxMsg.RxStatus);
+        log_print("  output ExtraDataIndex: %lu\n", (unsigned long)rxMsg.ExtraDataIndex);
         
         if (rxMsg.DataSize > 0) {
-            printf("  output bytes: ");
+            log_print("  output bytes: ");
             for (uint32_t i = 0; i < rxMsg.DataSize; i++) {
-                printf("%02X ", rxMsg.Data[i]);
+                log_print("%02X ", rxMsg.Data[i]);
             }
-            printf("\n");
+            log_print("\n");
             
             if (rxMsg.RxStatus & 0x00000001) {
                 log_hexdump("HW_TX_INDICATION", rxMsg.Data, rxMsg.DataSize);
@@ -789,7 +827,7 @@ static void handle_client_command(client_context_t *ctx, const ipc_header_t *hdr
         pthread_mutex_unlock(&g_j2534_lock);
 
         log_timestamp();
-        printf("PassThruStartMsgFilter(type=%u) -> %d (filter_id=%lu)\n", req->filter_type, ret, filterId);
+        log_print("[FILTER] PassThruStartMsgFilter(type=%u) -> %d (filter_id=%lu)\n", req->filter_type, ret, filterId);
 
         if (ret == 0) {
             ipc_resp_start_filter_t resp;
@@ -812,7 +850,7 @@ static void handle_client_command(client_context_t *ctx, const ipc_header_t *hdr
         }
         const ipc_req_five_baud_init_t *req = (const ipc_req_five_baud_init_t *)payload;
         log_timestamp();
-        printf("FIVE_BAUD_INIT target_address=0x%02X\n", req->target_address);
+        log_print("FIVE_BAUD_INIT target_address=0x%02X\n", req->target_address);
 
         uint8_t target_addr = req->target_address;
         J2534_SBYTE_ARRAY in_arr;
@@ -830,7 +868,8 @@ static void handle_client_command(client_context_t *ctx, const ipc_header_t *hdr
         pthread_mutex_unlock(&g_j2534_lock);
 
         log_timestamp();
-        printf("PassThruIoctl(FIVE_BAUD_INIT) -> %d (num_keybytes=%lu)\n", ret, out_arr.NumOfBytes);
+        log_print("[FIVE_BAUD_HW] Five baud init on ChannelID=%lu TargetAddress=0x%02X -> ret=%d (num_keybytes=%lu)\n",
+                  ctx->channel_id, req->target_address, ret, out_arr.NumOfBytes);
 
         if (ret == 0) {
             if (out_arr.NumOfBytes > 0) {
@@ -856,7 +895,7 @@ static void handle_client_command(client_context_t *ctx, const ipc_header_t *hdr
 
     default:
         log_timestamp();
-        printf("WARNING: Unknown command ID %u\n", hdr->command_id);
+        log_print("WARNING: Unknown command ID %u\n", hdr->command_id);
         send_ipc_reply(ctx, hdr->command_id, hdr->seq_id, IPC_STATUS_ERR_NOT_SUPPORTED, NULL, 0);
         break;
     }
@@ -871,7 +910,7 @@ static void service_client(int client_fd)
     pthread_mutex_init(&ctx.send_lock, NULL);
 
     log_timestamp();
-    printf("Client connected on fd=%d\n", client_fd);
+    log_print("Client connected on fd=%d\n", client_fd);
 
     uint8_t payload_buf[OPENSHIM_MAX_PAYLOAD];
 
@@ -880,20 +919,20 @@ static void service_client(int client_fd)
         int r = recv_all(client_fd, &hdr, sizeof(hdr));
         if (r != 0) {
             log_timestamp();
-            printf("Client disconnected or error reading header on fd=%d\n", client_fd);
+            log_print("Client disconnected or error reading header on fd=%d\n", client_fd);
             break;
         }
 
         if (hdr.magic != OPENSHIM_IPC_MAGIC || hdr.version != OPENSHIM_IPC_VERSION) {
             log_timestamp();
-            printf("ERROR: Bad magic (0x%08X) or version (%u) from client on fd=%d\n",
+            log_print("ERROR: Bad magic (0x%08X) or version (%u) from client on fd=%d\n",
                    hdr.magic, hdr.version, client_fd);
             break;
         }
 
         if (hdr.payload_len > sizeof(payload_buf)) {
             log_timestamp();
-            printf("ERROR: Payload too large (%u bytes) on fd=%d\n", hdr.payload_len, client_fd);
+            log_print("ERROR: Payload too large (%u bytes) on fd=%d\n", hdr.payload_len, client_fd);
             break;
         }
 
@@ -901,7 +940,7 @@ static void service_client(int client_fd)
             r = recv_all(client_fd, payload_buf, hdr.payload_len);
             if (r != 0) {
                 log_timestamp();
-                printf("Error reading payload on fd=%d\n", client_fd);
+                log_print("Error reading payload on fd=%d\n", client_fd);
                 break;
             }
         }
@@ -922,7 +961,7 @@ static void service_client(int client_fd)
     pthread_mutex_destroy(&ctx.send_lock);
 
     log_timestamp();
-    printf("Client session ended on fd=%d\n", client_fd);
+    log_print("Client session ended on fd=%d\n", client_fd);
 }
 
 int main(int argc, char *argv[])
@@ -936,7 +975,7 @@ int main(int argc, char *argv[])
         } else if (strcmp(argv[i], "--j2534") == 0 && i + 1 < argc) {
             custom_j2534 = argv[++i];
         } else if (strcmp(argv[i], "--help") == 0 || strcmp(argv[i], "-h") == 0) {
-            printf("Usage: %s [--port <port>] [--j2534 <path_to_j2534.so>]\n", argv[0]);
+            log_print("Usage: %s [--port <port>] [--j2534 <path_to_j2534.so>]\n", argv[0]);
             return 0;
         }
     }
@@ -945,8 +984,10 @@ int main(int argc, char *argv[])
     signal(SIGTERM, sig_handler);
     signal(SIGPIPE, SIG_IGN);
 
+    init_logging();
+
     log_timestamp();
-    printf("Starting OpenShim Native Linux Helper (port=%u)...\n", port);
+    log_print("Starting OpenShim Native Linux Helper (port=%u)...\n", port);
 
     if (load_j2534_library(custom_j2534) != 0) {
         fprintf(stderr, "Fatal: Unable to initialize J2534 subsystem.\n");
@@ -982,7 +1023,7 @@ int main(int argc, char *argv[])
     }
 
     log_timestamp();
-    printf("Listening strictly on %s:%u\n", OPENSHIM_DEFAULT_HOST, port);
+    log_print("Listening strictly on %s:%u\n", OPENSHIM_DEFAULT_HOST, port);
 
     while (g_running) {
         struct sockaddr_in client_addr;
@@ -997,7 +1038,7 @@ int main(int argc, char *argv[])
         char client_ip[INET_ADDRSTRLEN];
         inet_ntop(AF_INET, &client_addr.sin_addr, client_ip, sizeof(client_ip));
         log_timestamp();
-        printf("Accepted connection from %s:%u\n", client_ip, ntohs(client_addr.sin_port));
+        log_print("Accepted connection from %s:%u\n", client_ip, ntohs(client_addr.sin_port));
 
         service_client(client_fd);
     }
@@ -1008,6 +1049,6 @@ int main(int argc, char *argv[])
     }
 
     log_timestamp();
-    printf("Helper server shut down cleanly.\n");
+    log_print("Helper server shut down cleanly.\n");
     return 0;
 }

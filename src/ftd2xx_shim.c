@@ -80,6 +80,11 @@ typedef struct ShimState {
     uint8_t  expected_ack;
     DWORD    five_baud_timestamp;
     BOOL     five_baud_rx_ready;
+
+    /* Stream TX Frame Accumulator */
+    uint8_t  tx_accum[OPENSHIM_MAX_PAYLOAD];
+    uint32_t tx_accum_len;
+    DWORD    tx_accum_last_time;
 } ShimState;
 
 typedef struct IpcClient {
@@ -154,6 +159,8 @@ static void reset_open_state_locked(void)
     g_state.expected_ack = 0;
     g_state.five_baud_timestamp = 0;
     g_state.five_baud_rx_ready = FALSE;
+    g_state.tx_accum_len = 0;
+    g_state.tx_accum_last_time = 0;
 
     const char *env_backend = getenv("OPENSHIM_BACKEND");
     if (env_backend != NULL && _stricmp(env_backend, "loopback") == 0) {
@@ -265,6 +272,20 @@ static FT_STATUS check_handle_locked(FT_HANDLE handle)
     return FT_OK;
 }
 
+static void format_hex_buffer(const uint8_t *data, size_t len, char *out, size_t out_len)
+{
+    if (len == 0 || data == NULL || out_len == 0) {
+        if (out_len > 0) out[0] = 0;
+        return;
+    }
+    size_t pos = 0;
+    for (size_t i = 0; i < len && pos + 3 < out_len; ++i) {
+        int written = snprintf(out + pos, out_len - pos, "%s%02X", i == 0 ? "" : " ", data[i]);
+        if (written > 0) pos += (size_t)written;
+    }
+}
+
+
 static void copy_device_string(PVOID destination, const char *value)
 {
     if (destination != NULL) {
@@ -374,8 +395,10 @@ static DWORD WINAPI ipc_reader_thread_proc(LPVOID param)
                 if (event_to_signal != NULL) {
                     SetEvent(event_to_signal);
                 }
-                log_message("[ipc] RX push received: %u bytes (status=%u), queued into RX FIFO",
-                            data_len, rx_hdr->rx_status);
+                char rx_hex[128] = {0};
+                format_hex_buffer(data_bytes, data_len > 32 ? 32 : data_len, rx_hex, sizeof(rx_hex));
+                log_message("[ECU_RX] Received %u bytes from J2534 (rx_status=0x%08X): %s",
+                            data_len, rx_hdr->rx_status, rx_hex);
             }
         } else {
             /* Command reply */
@@ -824,6 +847,163 @@ FT_STATUS WINAPI FT_Close(FT_HANDLE ftHandle)
     return status;
 }
 
+
+static int check_frame_complete(const uint8_t *buf, uint32_t len, uint32_t *frame_len_out)
+{
+    if (len < 4) {
+        return 0;
+    }
+
+    uint32_t expected_len = 0;
+
+    /* Case 1: Standard ISO 14230 (KWP2000) headers: 0x80 .. 0xBF */
+    if ((buf[0] & 0xC0) == 0x80) {
+        uint8_t fmt_len = buf[0] & 0x3F;
+        if (fmt_len > 0) {
+            /* 3-byte header + fmt_len data bytes + 1-byte checksum */
+            expected_len = 3 + fmt_len + 1;
+        } else {
+            /* 4-byte header (Fmt, Tgt, Src, Len) + explicit len + 1-byte checksum */
+            if (len >= 4) {
+                expected_len = 4 + buf[3] + 1;
+            }
+        }
+    }
+    /* Case 2: Keihin / ISO 9141-2 style physical header: 0x68 */
+    else if (buf[0] == 0x68) {
+        uint8_t sid = buf[3];
+        switch (sid) {
+            case 0x27: /* SecurityAccess */
+                if (len >= 5) {
+                    uint8_t sub = buf[4];
+                    if (sub % 2 == 1) {
+                        /* Request Seed: e.g. 0x01, 0x03, 0x05 -> 6 bytes (68 6A F1 27 sub cs) */
+                        expected_len = 6;
+                    } else {
+                        /* Send Key: e.g. 0x02, 0x04, 0x06 -> 8 bytes (68 6A F1 27 sub keyH keyL cs) */
+                        expected_len = 8;
+                    }
+                }
+                break;
+            case 0x3E: /* TesterPresent */
+            case 0x3F: /* CheckDevice */
+            case 0x03: /* Read stored DTCs */
+            case 0x04: /* Clear DTCs */
+            case 0x07: /* Read pending DTCs */
+            case 0x34: /* RequestDownload */
+            case 0x37: /* RequestTransferExit */
+                expected_len = 5; /* 68 6A F1 sid cs */
+                break;
+            case 0x01: /* Show current data PID */
+            case 0x09: /* Vehicle info */
+            case 0x11: /* ECU Reset */
+                expected_len = 6; /* 68 6A F1 sid param cs */
+                break;
+            case 0x21: /* ReadDataByLocalIdentifier */
+                if (len >= 5) {
+                    if (buf[4] == 0x80) {
+                        /* SendIDQuery: 68 6A F1 21 80 cs */
+                        expected_len = 6;
+                    } else if (len >= 6) {
+                        uint8_t sum6 = 0;
+                        for (uint32_t i = 0; i < 5; ++i) sum6 += buf[i];
+                        if (sum6 == buf[5]) {
+                            expected_len = 6;
+                        }
+                    }
+                }
+                break;
+            case 0x22: /* ReadDataByIdentifier */
+            case 0x31: /* StartRoutineByLocalIdentifier */
+            case 0x32: /* StopRoutineByLocalIdentifier */
+                expected_len = 7; /* 68 6A F1 sid p1 p2 cs */
+                break;
+            case 0x23: /* ReadMemoryByAddress */
+                expected_len = 10; /* 68 6A F1 23 addr(3) count(2) cs */
+                break;
+            default:
+                break;
+        }
+    }
+
+    /* If expected_len is determined, check if we have received all bytes and checksum matches */
+    if (expected_len > 0 && len >= expected_len) {
+        uint8_t sum = 0;
+        for (uint32_t i = 0; i < expected_len - 1; ++i) {
+            sum += buf[i];
+        }
+        if (sum == buf[expected_len - 1]) {
+            *frame_len_out = expected_len;
+            return 1;
+        }
+    }
+
+    /* Fallback: if expected_len wasn't matched explicitly, but len >= 5 and sum matches */
+    if (expected_len == 0 && len >= 5) {
+        uint8_t sum = 0;
+        for (uint32_t i = 0; i < len - 1; ++i) {
+            sum += buf[i];
+        }
+        if (sum == buf[len - 1]) {
+            *frame_len_out = len;
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+static void dispatch_frame_locked(const uint8_t *frame_data, uint32_t frame_len)
+{
+    if (frame_len == 0 || frame_data == NULL) return;
+
+    if (g_state.backend_mode == BACKEND_MODE_IPC) {
+        FT_STATUS status = ensure_ipc_channel_connected_locked();
+        if (status == FT_OK) {
+            uint8_t write_buf[sizeof(ipc_req_write_t) + OPENSHIM_MAX_PAYLOAD];
+            ipc_req_write_t *req = (ipc_req_write_t *)write_buf;
+            req->channel_id = g_ipc.channel_id;
+            req->tx_flags = 0;
+            req->timeout_ms = g_state.write_timeout ? g_state.write_timeout : 500;
+            req->data_len = frame_len;
+            memcpy(write_buf + sizeof(ipc_req_write_t), frame_data, frame_len);
+
+            LeaveCriticalSection(&g_state_lock);
+
+            ipc_header_t resp_hdr;
+            ipc_resp_write_t resp;
+            ipc_send_command_sync(IPC_CMD_WRITE, write_buf,
+                                  sizeof(ipc_req_write_t) + frame_len,
+                                  &resp_hdr, &resp, sizeof(resp));
+
+            EnterCriticalSection(&g_state_lock);
+        }
+    }
+}
+
+static void flush_accum_if_timed_out_locked(void)
+{
+    if (g_state.tx_accum_len == 0) {
+        return;
+    }
+
+    DWORD now = GetTickCount();
+    DWORD elapsed = now - g_state.tx_accum_last_time;
+    if (elapsed >= 35) {
+        uint32_t frame_len = g_state.tx_accum_len;
+        uint8_t frame_to_send[OPENSHIM_MAX_PAYLOAD];
+        memcpy(frame_to_send, g_state.tx_accum, frame_len);
+        g_state.tx_accum_len = 0;
+
+        char frame_hex[256] = {0};
+        format_hex_buffer(frame_to_send, frame_len > 64 ? 64 : frame_len, frame_hex, sizeof(frame_hex));
+        log_message("[FRAME_TX] Inter-byte timeout flush (elapsed=%lu ms, len=%u): %s",
+                    (unsigned long)elapsed, frame_len, frame_hex);
+
+        dispatch_frame_locked(frame_to_send, frame_len);
+    }
+}
+
 FT_STATUS WINAPI FT_Read(FT_HANDLE ftHandle, LPVOID lpBuffer,
                          DWORD dwBytesToRead, LPDWORD lpdwBytesReturned)
 {
@@ -837,6 +1017,9 @@ FT_STATUS WINAPI FT_Read(FT_HANDLE ftHandle, LPVOID lpBuffer,
 
     EnterCriticalSection(&g_state_lock);
     status = check_handle_locked(ftHandle);
+    if (status == FT_OK) {
+        flush_accum_if_timed_out_locked();
+    }
     if (status == FT_OK && lpdwBytesReturned == NULL) {
         status = FT_INVALID_PARAMETER;
     } else if (status == FT_OK && dwBytesToRead > 0 && lpBuffer == NULL) {
@@ -1012,63 +1195,64 @@ FT_STATUS WINAPI FT_Write(FT_HANDLE ftHandle, LPVOID lpBuffer,
         return status;
     }
 
-    if (g_state.backend_mode == BACKEND_MODE_LOOPBACK) {
-        /* Synthetic loopback for testing */
-        g_state.tx_count = dwBytesToWrite;
-        actual = (DWORD)fifo_push_locked(data, (size_t)dwBytesToWrite);
-        g_state.tx_count = 0;
-        *lpdwBytesWritten = actual;
-        if (actual > 0 && (g_state.event_mask & FT_EVENT_RXCHAR) != 0) {
-            event_to_signal = g_state.event_handle;
-        }
-        if (actual != dwBytesToWrite) {
-            status = FT_INSUFFICIENT_RESOURCES;
-        }
-        LeaveCriticalSection(&g_state_lock);
-    } else {
-        /* IPC backend mode */
-        status = ensure_ipc_channel_connected_locked();
-        if (status != FT_OK) {
-            LeaveCriticalSection(&g_state_lock);
-            return status;
-        }
-
-        uint8_t write_buf[sizeof(ipc_req_write_t) + OPENSHIM_MAX_PAYLOAD];
-        ipc_req_write_t *req = (ipc_req_write_t *)write_buf;
-        req->channel_id = g_ipc.channel_id;
-        req->tx_flags = 0;
-        req->timeout_ms = g_state.write_timeout ? g_state.write_timeout : 500;
-        req->data_len = dwBytesToWrite;
-        memcpy(write_buf + sizeof(ipc_req_write_t), data, dwBytesToWrite);
-
-        LeaveCriticalSection(&g_state_lock);
-
-        ipc_header_t resp_hdr;
-        ipc_resp_write_t resp;
-        status = ipc_send_command_sync(IPC_CMD_WRITE, write_buf,
-                                       sizeof(ipc_req_write_t) + dwBytesToWrite,
-                                       &resp_hdr, &resp, sizeof(resp));
-
-        EnterCriticalSection(&g_state_lock);
-        if (status == FT_OK) {
-            actual = resp.bytes_written;
-            *lpdwBytesWritten = actual;
-            // Provide instant synthetic echo to satisfy TuneECU's FTDI expectations,
-            // because we are dropping hardware TX Loopback in the helper.
-            log_message("[LOCAL_ECHO] FT_Write IPC synthetic local echo");
-            fifo_push_locked(data, actual);
-            if (actual > 0 && (g_state.event_mask & FT_EVENT_RXCHAR) != 0) {
-                event_to_signal = g_state.event_handle;
-            }
-        }
-        LeaveCriticalSection(&g_state_lock);
+    /* Normal Stream Mode */
+    actual = (DWORD)fifo_push_locked(data, (size_t)dwBytesToWrite);
+    *lpdwBytesWritten = actual;
+    if (actual > 0 && (g_state.event_mask & FT_EVENT_RXCHAR) != 0) {
+        event_to_signal = g_state.event_handle;
     }
 
+    char echo_hex[128] = {0};
+    format_hex_buffer(data, dwBytesToWrite > 32 ? 32 : dwBytesToWrite, echo_hex, sizeof(echo_hex));
+    log_message("[LOCAL_ECHO] Provided synthetic local echo (len=%lu): %s",
+                (unsigned long)dwBytesToWrite, echo_hex);
+
+    for (DWORD i = 0; i < dwBytesToWrite; ++i) {
+        log_message("[STREAM_TX_BYTE] Byte 0x%02X accumulated (accum_len=%u)",
+                    data[i], g_state.tx_accum_len + (uint32_t)i + 1);
+    }
+
+    if (g_state.tx_accum_len + dwBytesToWrite <= sizeof(g_state.tx_accum)) {
+        memcpy(g_state.tx_accum + g_state.tx_accum_len, data, dwBytesToWrite);
+        g_state.tx_accum_len += dwBytesToWrite;
+        g_state.tx_accum_last_time = GetTickCount();
+    } else {
+        log_message("[FRAME_ACCUM] Accumulator overflow, resetting (len=%u + %lu > %zu)",
+                    g_state.tx_accum_len, (unsigned long)dwBytesToWrite, sizeof(g_state.tx_accum));
+        g_state.tx_accum_len = 0;
+    }
+
+    char accum_hex[256] = {0};
+    format_hex_buffer(g_state.tx_accum, g_state.tx_accum_len > 64 ? 64 : g_state.tx_accum_len, accum_hex, sizeof(accum_hex));
+    log_message("[FRAME_ACCUM] Total accum_len=%u: %s", g_state.tx_accum_len, accum_hex);
+
+    /* Signal event immediately so caller's thread / read loop unblocks without waiting for J2534 roundtrip */
     if (event_to_signal != NULL) {
         SetEvent(event_to_signal);
+        event_to_signal = NULL;
     }
-    log_transfer("FT_Write", ftHandle, data, dwBytesToWrite, actual, status);
-    return status;
+
+    uint32_t frame_len = 0;
+    while (check_frame_complete(g_state.tx_accum, g_state.tx_accum_len, &frame_len)) {
+        uint8_t frame_to_send[OPENSHIM_MAX_PAYLOAD];
+        memcpy(frame_to_send, g_state.tx_accum, frame_len);
+        if (g_state.tx_accum_len > frame_len) {
+            memmove(g_state.tx_accum, g_state.tx_accum + frame_len, g_state.tx_accum_len - frame_len);
+            g_state.tx_accum_len -= frame_len;
+        } else {
+            g_state.tx_accum_len = 0;
+        }
+
+        char frame_hex[256] = {0};
+        format_hex_buffer(frame_to_send, frame_len > 64 ? 64 : frame_len, frame_hex, sizeof(frame_hex));
+        log_message("[FRAME_TX] Complete frame identified (len=%u): %s", frame_len, frame_hex);
+
+        dispatch_frame_locked(frame_to_send, frame_len);
+    }
+
+    LeaveCriticalSection(&g_state_lock);
+    log_transfer("FT_Write", ftHandle, data, dwBytesToWrite, actual, FT_OK);
+    return FT_OK;
 }
 
 #define SIMPLE_HANDLE_SETTER(function_name, field_name, value_expression, format_text, ...) \
@@ -1428,6 +1612,7 @@ FT_STATUS WINAPI FT_Purge(FT_HANDLE ftHandle, DWORD dwMask)
         }
         if ((dwMask & FT_PURGE_TX) != 0) {
             g_state.tx_count = 0;
+            g_state.tx_accum_len = 0;
         }
 
         if (g_state.backend_mode == BACKEND_MODE_IPC && g_ipc.channel_connected) {
@@ -1482,6 +1667,9 @@ FT_STATUS WINAPI FT_GetStatus(FT_HANDLE ftHandle, LPDWORD lpdwAmountInRxQueue,
 
     EnterCriticalSection(&g_state_lock);
     status = check_handle_locked(ftHandle);
+    if (status == FT_OK) {
+        flush_accum_if_timed_out_locked();
+    }
     if (status == FT_OK && (lpdwAmountInRxQueue == NULL ||
                             lpdwAmountInTxQueue == NULL ||
                             lpdwEventStatus == NULL)) {
