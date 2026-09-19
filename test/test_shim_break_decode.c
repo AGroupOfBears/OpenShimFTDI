@@ -33,14 +33,19 @@ typedef FT_STATUS (WINAPI *SimpleFn)(FT_HANDLE);
 static void send_tuneecu_break_train(SimpleFn set_break_on, SimpleFn set_break_off, FT_HANDLE handle, int address)
 {
     int c = address * 4 + 1025;
+    BYTE b = 0;
     for (int j = 0; j < 11; j++) {
         BYTE b2 = (BYTE)(c & 1);
         c >>= 1;
-        if (b2 == 0) {
-            set_break_on(handle);
-        } else {
-            set_break_off(handle);
+        if (b2 != b) {
+            if (b2 == 0) {
+                set_break_on(handle);
+            } else {
+                set_break_off(handle);
+            }
         }
+        b = b2;
+        Sleep(200); // Simulate authentic TuneECU 200ms sleep
     }
 }
 
@@ -96,17 +101,15 @@ int main(void)
     send_tuneecu_break_train(set_break_on, set_break_off, handle, 0x33);
 
     /* Event should have fired */
-    DWORD wait_res = WaitForSingleObject(rx_event, 500);
-    assert(wait_res == WAIT_OBJECT_0);
-
-    /* Check RX queue length */
-    st = get_status(handle, &rx, &tx, &ev);
-    assert(st == FT_OK);
-    assert(rx == 3);
-
     /* TuneECU calls post-break purge - must PRESERVE the 3 bytes */
     st = purge(handle, FT_PURGE_RX | FT_PURGE_TX);
     assert(st == FT_OK);
+
+    /* Event should have fired */
+    DWORD wait_res = WaitForSingleObject(rx_event, 5000);
+    assert(wait_res == WAIT_OBJECT_0);
+
+    /* Check RX queue length */
     st = get_status(handle, &rx, &tx, &ev);
     assert(st == FT_OK);
     assert(rx == 3);
@@ -150,14 +153,12 @@ int main(void)
     printf("\n[TEST 2] Testing 5-baud pattern decode for address 0xD5 (Sagem)...\n");
     send_tuneecu_break_train(set_break_on, set_break_off, handle, 0xD5);
 
-    wait_res = WaitForSingleObject(rx_event, 500);
-    assert(wait_res == WAIT_OBJECT_0);
-
-    st = get_status(handle, &rx, &tx, &ev);
-    assert(st == FT_OK && rx == 3);
-
     st = purge(handle, FT_PURGE_RX | FT_PURGE_TX);
     assert(st == FT_OK);
+
+    wait_res = WaitForSingleObject(rx_event, 5000);
+    assert(wait_res == WAIT_OBJECT_0);
+
     st = get_status(handle, &rx, &tx, &ev);
     assert(st == FT_OK && rx == 3);
 
@@ -189,6 +190,8 @@ int main(void)
      * ========================================================================= */
     printf("\n[TEST 3] Testing non-matching write during awaiting_init state...\n");
     send_tuneecu_break_train(set_break_on, set_break_off, handle, 0x33);
+    purge(handle, FT_PURGE_RX | FT_PURGE_TX);
+    WaitForSingleObject(rx_event, 5000);
     st = read_device(handle, buf, 3, &read_bytes);
     assert(st == FT_OK && read_bytes == 3);
 
@@ -219,6 +222,8 @@ int main(void)
      * ========================================================================= */
     printf("\n[TEST 4] Testing handshake state timeout reset (>5000ms)...\n");
     send_tuneecu_break_train(set_break_on, set_break_off, handle, 0x33);
+    purge(handle, FT_PURGE_RX | FT_PURGE_TX);
+    WaitForSingleObject(rx_event, 5000);
     st = read_device(handle, buf, 3, &read_bytes);
     assert(st == FT_OK && read_bytes == 3);
 

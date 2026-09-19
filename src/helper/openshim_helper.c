@@ -16,6 +16,7 @@
 #include <time.h>
 
 #include "../../include/openshim_ipc.h"
+#define J2534_TX_MSG_TYPE 0x00000001
 
 /* J2534 Types and Constants */
 #define PM_DATA_LEN 4128
@@ -283,7 +284,24 @@ static void *rx_worker_thread(void *arg)
         pthread_mutex_unlock(&g_j2534_lock);
 
         if (ret == 0 && num_msgs > 0 && msg.DataSize > 0) {
-            log_hexdump(msg.RxStatus == 1 ? "RX-LOOPBACK" : "RX-DATA", msg.Data, msg.DataSize);
+            const char *label = "UNKNOWN";
+            if (msg.RxStatus & J2534_TX_MSG_TYPE) {
+                label = "HW_TX_INDICATION";
+            } else if (msg.RxStatus == 0) {
+                label = "ECU_RX";
+            } else {
+                label = "HW_RX";
+            }
+            log_timestamp();
+            printf("[%s] Chan=%lu Prot=0x%04X, Status=0x%08X (flags=%04lX), TxFlg=%08X, DataSize=%lu\n",
+                   label, ctx->channel_id, (unsigned int)msg.ProtocolID, (unsigned int)msg.RxStatus, msg.RxStatus & 0xFFFF, (unsigned int)msg.TxFlags, msg.DataSize);
+            log_hexdump(label, msg.Data, msg.DataSize);
+
+            if (msg.RxStatus & 0x00000001) { /* J2534_TX_MSG_TYPE */
+                // Drop J2534 hardware TX echoes. The shim provides synchronous synthetic 
+                // echo internally to satisfy TuneECU's FTDI expectations instantly.
+                continue;
+            }
             if (push_ipc_rx_data(ctx, ctx->channel_id, (uint32_t)msg.RxStatus,
                                  (uint32_t)msg.Timestamp, msg.Data, (uint32_t)msg.DataSize) != 0) {
                 log_timestamp();
@@ -685,7 +703,8 @@ static void handle_client_command(client_context_t *ctx, const ipc_header_t *hdr
         pthread_mutex_unlock(&g_j2534_lock);
 
         log_timestamp();
-        printf("PassThruIoctl(FAST_INIT) -> %d (rx_len=%lu)\n", ret, rxMsg.DataSize);
+        printf("PassThruIoctl(FAST_INIT) -> %d (rx_len=%lu, RxStatus=0x%08X, ExtraDataIndex=%lu)\n", 
+               ret, (unsigned long)rxMsg.DataSize, (unsigned int)rxMsg.RxStatus, (unsigned long)rxMsg.ExtraDataIndex);
 
         if (ret == 0) {
             if (rxMsg.DataSize > 0) {

@@ -74,6 +74,7 @@ typedef struct ShimState {
     uint32_t break_bit_count;
     uint32_t break_bit_accumulator;
     DWORD    last_break_time;
+    uint8_t  last_break_val;
     FiveBaudState five_baud_state;
     uint8_t  expected_init;
     uint8_t  expected_ack;
@@ -147,6 +148,7 @@ static void reset_open_state_locked(void)
     g_state.break_bit_count = 0;
     g_state.break_bit_accumulator = 0;
     g_state.last_break_time = 0;
+    g_state.last_break_val = 1;
     g_state.five_baud_state = FIVE_BAUD_STATE_IDLE;
     g_state.expected_init = 0;
     g_state.expected_ack = 0;
@@ -1050,6 +1052,12 @@ FT_STATUS WINAPI FT_Write(FT_HANDLE ftHandle, LPVOID lpBuffer,
         if (status == FT_OK) {
             actual = resp.bytes_written;
             *lpdwBytesWritten = actual;
+            // Provide instant synthetic echo to satisfy TuneECU's FTDI expectations,
+            // because we are dropping hardware TX Loopback in the helper.
+            fifo_push_locked(data, actual);
+            if (actual > 0 && (g_state.event_mask & FT_EVENT_RXCHAR) != 0) {
+                event_to_signal = g_state.event_handle;
+            }
         }
         LeaveCriticalSection(&g_state_lock);
     }
@@ -1173,41 +1181,79 @@ static void execute_five_baud_init_locked(uint8_t target_address, HANDLE *event_
 
 static void handle_break_bit_locked(uint8_t bit, HANDLE *event_to_signal)
 {
+    // Timing-based 5-baud decoder
     DWORD now = GetTickCount();
-    if (g_state.break_bit_count > 0 && (now - g_state.last_break_time) > 1500) {
-        log_message("[FIVE_BAUD] Break train timed out (>1500ms); resetting accumulator");
+    
+
+    if (g_state.break_bit_count > 0 && (now - g_state.last_break_time) > 3000) {
+        log_message("[FIVE_BAUD] Break train timed out (>3000ms); resetting accumulator");
         g_state.break_bit_count = 0;
         g_state.break_bit_accumulator = 0;
-    }
-
-    if (g_state.break_bit_count == 0) {
-        if (bit == 1) {
-            g_state.break_bit_accumulator = 1;
-            g_state.break_bit_count = 1;
+        g_state.last_break_val = 1;
+        if (bit == 0) { // start bit?
             g_state.last_break_time = now;
+            g_state.last_break_val = 0;
         }
         return;
     }
 
-    g_state.break_bit_accumulator |= ((uint32_t)bit << g_state.break_bit_count);
-    g_state.break_bit_count++;
-    g_state.last_break_time = now;
+    if (bit != g_state.last_break_val) {
+        DWORD time_spent = now - g_state.last_break_time;
+        // ~200ms per bit (5 baud)
+        DWORD num_bits = (time_spent + 100) / 200;
+        
+        log_message("DEBUG_TRANSITION bit=%d last=%d count=%ld time_spent=%ld num_bits=%ld", bit, g_state.last_break_val, (long)g_state.break_bit_count, time_spent, num_bits);
+        
+        int is_first = 0;
+        if (g_state.break_bit_count == 0 && bit == 0 && g_state.last_break_val == 1) {
+            num_bits = 0;
+            is_first = 1;
+            log_message("[FIVE_BAUD] Initial transition to LOW detected");
+            g_state.fast_init_state = FAST_INIT_BREAK_ON;
+        }
+        
+        if (num_bits == 0 && !is_first) num_bits = 1; // Catch transitions that were too fast
+        
+        for (DWORD i = 0; i < num_bits && g_state.break_bit_count < 10; i++) {
+            g_state.break_bit_accumulator |= ((uint32_t)g_state.last_break_val << g_state.break_bit_count);
+            g_state.break_bit_count++;
+        }
+        
+        g_state.last_break_time = now;
+        g_state.last_break_val = bit;
+    }
+}
 
-    if (g_state.break_bit_count == 11) {
+static void check_five_baud_completion_locked(HANDLE *event_to_signal) {
+    if (g_state.break_bit_count > 0 && g_state.break_bit_count < 10 && g_state.last_break_val == 1) {
+        DWORD now = GetTickCount();
+        DWORD time_spent = now - g_state.last_break_time;
+        DWORD num_bits = (time_spent + 100) / 200;
+        if (g_state.break_bit_count + num_bits >= 10) {
+            num_bits = 10 - g_state.break_bit_count;
+            for (DWORD i = 0; i < num_bits; i++) {
+                g_state.break_bit_accumulator |= (1 << g_state.break_bit_count);
+                g_state.break_bit_count++;
+            }
+        }
+    }
+    
+    if (g_state.break_bit_count == 10) {
         uint32_t pat = g_state.break_bit_accumulator;
         g_state.break_bit_count = 0;
         g_state.break_bit_accumulator = 0;
-
-        if ((pat & 0x03) == 0x01 && ((pat >> 10) & 0x01) == 0x01) {
-            uint8_t addr = (uint8_t)((pat >> 2) & 0xFF);
+        
+        // Start bit 0 (bit0), Stop bit 1 (bit9)
+        if ((pat & 0x01) == 0x00 && ((pat >> 9) & 0x01) == 0x01) {
+            uint8_t addr = (uint8_t)((pat >> 1) & 0xFF);
             if (addr == 0x33 || addr == 0xD5) {
-                log_message("[FIVE_BAUD] Recognized 11-bit 5-baud sequence for address 0x%02X", addr);
+                log_message("[FIVE_BAUD] Recognized 10-bit sequence (via timing) for address 0x%02X", addr);
                 execute_five_baud_init_locked(addr, event_to_signal);
             } else {
-                log_message("[FIVE_BAUD] 11-bit sequence framing valid but unhandled address 0x%02X", addr);
+                log_message("[FIVE_BAUD] 10-bit valid but unhandled address 0x%02X (pat=0x%03X)", addr, pat);
             }
         } else {
-            log_message("[FIVE_BAUD] 11-bit sequence framing invalid: pattern=0x%03X", pat);
+            log_message("[FIVE_BAUD] 10-bit framing invalid: pattern=0x%03X", pat);
         }
     }
 }
@@ -1227,6 +1273,7 @@ FT_STATUS WINAPI FT_SetBreakOn(FT_HANDLE ftHandle)
 
         /* 5-baud break bit-banging detection (Break On = Space = 0) */
         handle_break_bit_locked(0, &event_to_signal);
+        check_five_baud_completion_locked(&event_to_signal);
     }
     LeaveCriticalSection(&g_state_lock);
     if (event_to_signal != NULL) {
@@ -1252,6 +1299,7 @@ FT_STATUS WINAPI FT_SetBreakOff(FT_HANDLE ftHandle)
 
         /* 5-baud break bit-banging detection (Break Off = Mark = 1) */
         handle_break_bit_locked(1, &event_to_signal);
+        check_five_baud_completion_locked(&event_to_signal);
     }
     LeaveCriticalSection(&g_state_lock);
     if (event_to_signal != NULL) {
@@ -1342,10 +1390,14 @@ FT_STATUS WINAPI FT_Purge(FT_HANDLE ftHandle, DWORD dwMask)
     FT_STATUS status;
     size_t rx_before = 0;
     size_t tx_before = 0;
+    HANDLE event_to_signal = NULL;
 
     EnterCriticalSection(&g_state_lock);
     status = check_handle_locked(ftHandle);
     if (status == FT_OK) {
+        if (g_state.break_bit_count > 0 && g_state.last_break_val == 1) {
+            check_five_baud_completion_locked(&event_to_signal);
+        }
         rx_before = g_state.rx_count;
         tx_before = g_state.tx_count;
         if (g_state.five_baud_rx_ready) {
@@ -1384,6 +1436,7 @@ FT_STATUS WINAPI FT_Purge(FT_HANDLE ftHandle, DWORD dwMask)
                 ftHandle, (unsigned long)dwMask, (unsigned long)status,
                 (unsigned long)(((dwMask & FT_PURGE_RX) != 0) ? rx_before : 0),
                 (unsigned long)(((dwMask & FT_PURGE_TX) != 0) ? tx_before : 0));
+    if (event_to_signal != NULL) SetEvent(event_to_signal);
     return status;
 }
 
@@ -1428,10 +1481,19 @@ FT_STATUS WINAPI FT_GetStatus(FT_HANDLE ftHandle, LPDWORD lpdwAmountInRxQueue,
     }
     LeaveCriticalSection(&g_state_lock);
 
-    log_message("FT_GetStatus(handle=%p, rx_out=%p, tx_out=%p, event_out=%p) -> status=%lu, rx=%lu, tx=%lu, events=0x%08lX",
-                ftHandle, (void *)lpdwAmountInRxQueue, (void *)lpdwAmountInTxQueue,
-                (void *)lpdwEventStatus, (unsigned long)status,
-                (unsigned long)rx, (unsigned long)tx, (unsigned long)events);
+    static int getstatus_dropped = 0;
+    if (rx == 0 && tx == 0 && events == 0 && status == FT_OK) {
+        getstatus_dropped++;
+    } else {
+        if (getstatus_dropped > 0) {
+            log_message("    (suppressed %d idle FT_GetStatus calls)", getstatus_dropped);
+            getstatus_dropped = 0;
+        }
+        log_message("FT_GetStatus(handle=%p, rx_out=%p, tx_out=%p, event_out=%p) -> status=%lu, rx=%lu, tx=%lu, events=0x%08lX",
+                    ftHandle, (void *)lpdwAmountInRxQueue, (void *)lpdwAmountInTxQueue,
+                    (void *)lpdwEventStatus, (unsigned long)status,
+                    (unsigned long)rx, (unsigned long)tx, (unsigned long)events);
+    }
     return status;
 }
 
