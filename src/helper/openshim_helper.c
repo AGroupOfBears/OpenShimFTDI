@@ -155,20 +155,18 @@ static FILE *g_log_file = NULL;
 static void init_logging(void)
 {
     const char *env_path = getenv("OPENSHIM_HELPER_LOG");
-    const char *paths[] = {
-        env_path,
-        "/home/spoqn/Desktop/TuneECUv2.5.5/openshim-helper.log",
-        "openshim-helper.log",
-        NULL
-    };
-    for (int i = 0; paths[i] != NULL; i++) {
-        if (paths[i][0] == '\0') continue;
-        g_log_file = fopen(paths[i], "a");
-        if (g_log_file) {
-            fprintf(g_log_file, "\n=== OpenShim Helper Session Started ===\n");
-            fflush(g_log_file);
-            break;
-        }
+    if (env_path != NULL && env_path[0] != 0) {
+        g_log_file = fopen(env_path, "a");
+    }
+    if (!g_log_file) {
+        g_log_file = fopen("/home/spoqn/Desktop/TuneECUv2.5.5/openshim-helper.log", "a");
+    }
+    if (!g_log_file) {
+        g_log_file = fopen("openshim-helper.log", "a");
+    }
+    if (g_log_file) {
+        fprintf(g_log_file, "\n=== OpenShim Helper Session Started ===\n");
+        fflush(g_log_file);
     }
 }
 
@@ -333,9 +331,9 @@ static void *rx_worker_thread(void *arg)
             }
 
             log_timestamp();
-            log_print("[ECU_RX] Chan=%lu Status=0x%08X (flags=%04lX), TxFlg=%08X, DataSize=%lu\n",
+            log_print("[ECU_RX_RAW_J2534] Chan=%lu Status=0x%08X (flags=%04lX), TxFlg=%08X, DataSize=%lu\n",
                       ctx->channel_id, (unsigned int)msg.RxStatus, msg.RxStatus & 0xFFFF, (unsigned int)msg.TxFlags, msg.DataSize);
-            log_hexdump("[ECU_RX]", msg.Data, msg.DataSize);
+            log_hexdump("[ECU_RX_RAW_J2534]", msg.Data, msg.DataSize);
 
             if (push_ipc_rx_data(ctx, ctx->channel_id, (uint32_t)msg.RxStatus,
                                  (uint32_t)msg.Timestamp, msg.Data, (uint32_t)msg.DataSize) != 0) {

@@ -56,7 +56,7 @@ test-packetizer: FTD2XX.dll test/test_shim_packetizer.exe
 test-ipc: all
 	@echo "=== Running end-to-end IPC tests ==="
 	./openshim-helper --port 19234 & HELPER_PID=$$!; \
-	sleep 0.5; \
+	sleep 1.0; \
 	WINEDLLOVERRIDES="ftd2xx=n" $(WINE) ./test/test_shim_ipc.exe; \
 	RET=$$?; \
 	kill $$HELPER_PID 2>/dev/null || true; \
@@ -65,7 +65,7 @@ test-ipc: all
 test-helper: openshim-helper test_helper_live
 	@echo "=== Running live helper test ==="
 	./openshim-helper --port 19238 & HELPER_PID=$$!; \
-	sleep 0.5; \
+	sleep 1.0; \
 	./test_helper_live 19238; \
 	RET=$$?; \
 	kill $$HELPER_PID 2>/dev/null || true; \

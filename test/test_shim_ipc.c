@@ -37,7 +37,7 @@ typedef FT_STATUS (WINAPI *UsbFn)(FT_HANDLE, DWORD, DWORD);
         variable = (type)GetProcAddress(module, name);                      \
         if (variable == NULL) {                                             \
             fprintf(stderr, "FAIL: missing export %s\n", name);            \
-            return 1;                                                       \
+            ExitProcess(1);                                                       \
         }                                                                   \
     } while (0)
 
@@ -45,10 +45,19 @@ int main(void)
 {
     printf("=== Test: OpenShimFTDI Windows DLL via IPC Backend ===\n");
 
+    setvbuf(stdout, NULL, _IONBF, 0);
+    setvbuf(stderr, NULL, _IONBF, 0);
+
     HMODULE module = LoadLibraryA("..\\FTD2XX.dll");
     if (module == NULL) {
+        module = LoadLibraryA(".\\FTD2XX.dll");
+    }
+    if (module == NULL) {
+        module = LoadLibraryA("FTD2XX.dll");
+    }
+    if (module == NULL) {
         fprintf(stderr, "FAIL: LoadLibraryA FTD2XX.dll error %lu\n", GetLastError());
-        return 1;
+        ExitProcess(1);
     }
 
     CreateListFn create_list;
@@ -115,10 +124,10 @@ int main(void)
     if (st != FT_OK) {
         if (st == 2) {
         printf("[NOTICE] Hardware not attached; open_ex returned FT_DEVICE_NOT_FOUND gracefully.\n");
-        return 0;
+        ExitProcess(0);
     }
     fprintf(stderr, "FAIL: open_ex returned %lu. Is openshim-helper running on port 19234?\n", st);
-        return 1;
+        ExitProcess(1);
     }
     assert(handle != NULL);
     printf("[PASS] FT_OpenEx opened device handle=%p over IPC\n", handle);
@@ -202,5 +211,5 @@ int main(void)
     FreeLibrary(module);
 
     printf("=== ALL SHIM IPC TESTS PASSED SUCCESSFULLY ===\n");
-    return 0;
+    ExitProcess(0);
 }

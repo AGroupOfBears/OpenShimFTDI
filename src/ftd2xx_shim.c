@@ -376,16 +376,45 @@ static DWORD WINAPI ipc_reader_thread_proc(LPVOID param)
         }
 
         if (hdr.command_id == IPC_CMD_RX_DATA) {
-            /* Asynchronous push of received or loopback bytes */
+            /* Asynchronous push of received ECU bytes from J2534 */
             if (hdr.payload_len >= sizeof(ipc_push_rx_data_t)) {
                 const ipc_push_rx_data_t *rx_hdr = (const ipc_push_rx_data_t *)payload_buf;
                 const BYTE *data_bytes = payload_buf + sizeof(ipc_push_rx_data_t);
                 uint32_t data_len = rx_hdr->data_len;
 
+                char raw_hex[256] = {0};
+                format_hex_buffer(data_bytes, data_len > 64 ? 64 : data_len, raw_hex, sizeof(raw_hex));
+                log_message("[ECU_RX_RAW_J2534] Received %u bytes from J2534 (rx_status=0x%08X): %s",
+                            data_len, rx_hdr->rx_status, raw_hex);
+
+                /* Checksum Bridge Architecture A:
+                 * Standard J2534 verified and stripped the 1-byte additive checksum from the wire.
+                 * TuneECU's FTDI serial driver expects raw UART bytes including the checksum.
+                 * Reconstruct the additive checksum and append it before queueing into RX FIFO.
+                 */
+                BYTE rx_buf[OPENSHIM_MAX_PAYLOAD + 1];
+                uint32_t total_rx_len = data_len;
+                if (data_len > 0 && data_len < OPENSHIM_MAX_PAYLOAD) {
+                    memcpy(rx_buf, data_bytes, data_len);
+                    uint8_t csum = 0;
+                    for (uint32_t i = 0; i < data_len; ++i) {
+                        csum += data_bytes[i];
+                    }
+                    rx_buf[data_len] = csum;
+                    total_rx_len = data_len + 1;
+                    log_message("[WIRE_CHECKSUM_MODE] Mode A: Reconstructed trailing checksum 0x%02X for TuneECU serial stream", csum);
+                } else if (data_len > 0) {
+                    memcpy(rx_buf, data_bytes, data_len);
+                }
+
+                char tune_hex[256] = {0};
+                format_hex_buffer(rx_buf, total_rx_len > 64 ? 64 : total_rx_len, tune_hex, sizeof(tune_hex));
+                log_message("[TUNE_RX] Queued %u bytes into TuneECU RX FIFO: %s", total_rx_len, tune_hex);
+
                 HANDLE event_to_signal = NULL;
                 EnterCriticalSection(&g_state_lock);
-                if (g_state.opened) {
-                    size_t pushed = fifo_push_locked(data_bytes, data_len);
+                if (g_state.opened && total_rx_len > 0) {
+                    size_t pushed = fifo_push_locked(rx_buf, total_rx_len);
                     if (pushed > 0 && (g_state.event_mask & FT_EVENT_RXCHAR) != 0) {
                         event_to_signal = g_state.event_handle;
                     }
@@ -395,10 +424,6 @@ static DWORD WINAPI ipc_reader_thread_proc(LPVOID param)
                 if (event_to_signal != NULL) {
                     SetEvent(event_to_signal);
                 }
-                char rx_hex[128] = {0};
-                format_hex_buffer(data_bytes, data_len > 32 ? 32 : data_len, rx_hex, sizeof(rx_hex));
-                log_message("[ECU_RX] Received %u bytes from J2534 (rx_status=0x%08X): %s",
-                            data_len, rx_hdr->rx_status, rx_hex);
             }
         } else {
             /* Command reply */
@@ -876,14 +901,52 @@ static int check_frame_complete(const uint8_t *buf, uint32_t len, uint32_t *fram
             case 0x27: /* SecurityAccess */
                 if (len >= 5) {
                     uint8_t sub = buf[4];
-                    if (sub % 2 == 1) {
-                        /* Request Seed: e.g. 0x01, 0x03, 0x05 -> 6 bytes (68 6A F1 27 sub cs) */
+                    if (sub == 0x03 && len >= 6 && buf[5] == 0x02) {
+                        /* Sagem / Keihin ISO Seed request: 68 6A F1 27 03 02 EF (7 bytes)
+                         * OR Sagem / Keihin ISO Key send: 68 6A F1 27 03 02 <k_hi> <k_lo> <cs> (9 bytes) */
+                        if (len >= 7) {
+                            uint8_t sum7 = (uint8_t)(buf[0] + buf[1] + buf[2] + buf[3] + buf[4] + buf[5]);
+                            if (buf[6] == sum7) {
+                                expected_len = 7;
+                            } else if (len >= 9) {
+                                uint8_t sum9 = 0;
+                                for (uint32_t i = 0; i < 8; ++i) sum9 += buf[i];
+                                if (buf[8] == sum9) {
+                                    expected_len = 9;
+                                }
+                            }
+                        }
+                    } else if (sub % 2 == 1) {
+                        /* Standard Seed: e.g. 0x01, 0x03, 0x05 -> 6 bytes (68 6A F1 27 sub cs) */
                         expected_len = 6;
                     } else {
-                        /* Send Key: e.g. 0x02, 0x04, 0x06 -> 8 bytes (68 6A F1 27 sub keyH keyL cs) */
+                        /* Standard Key: e.g. 0x02, 0x04, 0x06 -> 8 bytes (68 6A F1 27 sub keyH keyL cs) */
                         expected_len = 8;
                     }
                 }
+                break;
+            case 0x1A: /* ReadECUIdentification: 68 6A F1 1A subfunc cs */
+            case 0x3C: /* Keihin dataBlock query: 68 6A F1 3C subfunc cs */
+                expected_len = 6;
+                break;
+            case 0x21: /* ReadDataByLocalIdentifier */
+                if (len >= 6) {
+                    uint8_t sum6 = (uint8_t)(buf[0] + buf[1] + buf[2] + buf[3] + buf[4]);
+                    if (buf[5] == sum6) {
+                        expected_len = 6;
+                    } else if (len >= 7) {
+                        uint8_t sum7 = (uint8_t)(sum6 + buf[5]);
+                        if (buf[6] == sum7) {
+                            expected_len = 7;
+                        }
+                    }
+                }
+                break;
+            case 0x18: /* ReadDiagnosticTroubleCodesByStatus: 68 6A F1 18 00 FF 00 cs */
+                expected_len = 8;
+                break;
+            case 0x14: /* ClearDiagnosticInformation: 68 6A F1 14 FF 00 cs */
+                expected_len = 7;
                 break;
             case 0x3E: /* TesterPresent */
             case 0x3F: /* CheckDevice */
@@ -899,27 +962,13 @@ static int check_frame_complete(const uint8_t *buf, uint32_t len, uint32_t *fram
             case 0x11: /* ECU Reset */
                 expected_len = 6; /* 68 6A F1 sid param cs */
                 break;
-            case 0x21: /* ReadDataByLocalIdentifier */
-                if (len >= 5) {
-                    if (buf[4] == 0x80) {
-                        /* SendIDQuery: 68 6A F1 21 80 cs */
-                        expected_len = 6;
-                    } else if (len >= 6) {
-                        uint8_t sum6 = 0;
-                        for (uint32_t i = 0; i < 5; ++i) sum6 += buf[i];
-                        if (sum6 == buf[5]) {
-                            expected_len = 6;
-                        }
-                    }
-                }
-                break;
             case 0x22: /* ReadDataByIdentifier */
             case 0x31: /* StartRoutineByLocalIdentifier */
             case 0x32: /* StopRoutineByLocalIdentifier */
                 expected_len = 7; /* 68 6A F1 sid p1 p2 cs */
                 break;
-            case 0x23: /* ReadMemoryByAddress */
-                expected_len = 10; /* 68 6A F1 23 addr(3) count(2) cs */
+            case 0x23: /* ReadMemoryByAddress: 68 6A F1 23 addr(3) len(2) cs */
+                expected_len = 10;
                 break;
             default:
                 break;
@@ -938,18 +987,6 @@ static int check_frame_complete(const uint8_t *buf, uint32_t len, uint32_t *fram
         }
     }
 
-    /* Fallback: if expected_len wasn't matched explicitly, but len >= 5 and sum matches */
-    if (expected_len == 0 && len >= 5) {
-        uint8_t sum = 0;
-        for (uint32_t i = 0; i < len - 1; ++i) {
-            sum += buf[i];
-        }
-        if (sum == buf[len - 1]) {
-            *frame_len_out = len;
-            return 1;
-        }
-    }
-
     return 0;
 }
 
@@ -960,20 +997,48 @@ static void dispatch_frame_locked(const uint8_t *frame_data, uint32_t frame_len)
     if (g_state.backend_mode == BACKEND_MODE_IPC) {
         FT_STATUS status = ensure_ipc_channel_connected_locked();
         if (status == FT_OK) {
+            /* Checksum Bridge Architecture A:
+             * TuneECU generates serial frames including an 8-bit additive checksum byte.
+             * Standard J2534 (ISO14230 / ISO9141) with TxFlags=0 automatically computes
+             * and appends the wire checksum.
+             * Therefore, we validate TuneECU's checksum, log [WIRE_CHECKSUM_MODE],
+             * strip the trailing checksum byte, and pass the payload to J2534.
+             */
+            uint32_t j2534_tx_len = frame_len;
+            if (frame_len >= 4) {
+                uint8_t expected_csum = 0;
+                for (uint32_t i = 0; i < frame_len - 1; ++i) {
+                    expected_csum += frame_data[i];
+                }
+                if (frame_data[frame_len - 1] == expected_csum) {
+                    j2534_tx_len = frame_len - 1;
+                    log_message("[WIRE_CHECKSUM_MODE] Mode A: Stripped TuneECU checksum 0x%02X; J2534/OpenPort hardware will generate on-wire checksum",
+                                frame_data[frame_len - 1]);
+                } else {
+                    log_message("[WIRE_CHECKSUM_MODE] Mode A Warning: Frame checksum mismatch (got 0x%02X, calc 0x%02X); transmitting as raw payload",
+                                frame_data[frame_len - 1], expected_csum);
+                }
+            }
+
+            char j2534_hex[256] = {0};
+            format_hex_buffer(frame_data, j2534_tx_len > 64 ? 64 : j2534_tx_len, j2534_hex, sizeof(j2534_hex));
+            log_message("[J2534_TX] Passing %u bytes to J2534 (TxFlags=0x00000000): %s",
+                        j2534_tx_len, j2534_hex);
+
             uint8_t write_buf[sizeof(ipc_req_write_t) + OPENSHIM_MAX_PAYLOAD];
             ipc_req_write_t *req = (ipc_req_write_t *)write_buf;
             req->channel_id = g_ipc.channel_id;
             req->tx_flags = 0;
             req->timeout_ms = g_state.write_timeout ? g_state.write_timeout : 500;
-            req->data_len = frame_len;
-            memcpy(write_buf + sizeof(ipc_req_write_t), frame_data, frame_len);
+            req->data_len = j2534_tx_len;
+            memcpy(write_buf + sizeof(ipc_req_write_t), frame_data, j2534_tx_len);
 
             LeaveCriticalSection(&g_state_lock);
 
             ipc_header_t resp_hdr;
             ipc_resp_write_t resp;
             ipc_send_command_sync(IPC_CMD_WRITE, write_buf,
-                                  sizeof(ipc_req_write_t) + frame_len,
+                                  sizeof(ipc_req_write_t) + j2534_tx_len,
                                   &resp_hdr, &resp, sizeof(resp));
 
             EnterCriticalSection(&g_state_lock);
@@ -997,10 +1062,30 @@ static void flush_accum_if_timed_out_locked(void)
 
         char frame_hex[256] = {0};
         format_hex_buffer(frame_to_send, frame_len > 64 ? 64 : frame_len, frame_hex, sizeof(frame_hex));
-        log_message("[FRAME_TX] Inter-byte timeout flush (elapsed=%lu ms, len=%u): %s",
-                    (unsigned long)elapsed, frame_len, frame_hex);
 
-        dispatch_frame_locked(frame_to_send, frame_len);
+        /* Check structural plausibility and checksum validity */
+        BOOL valid = FALSE;
+        if (frame_len >= 4) {
+            uint8_t sum = 0;
+            for (uint32_t i = 0; i < frame_len - 1; ++i) {
+                sum += frame_to_send[i];
+            }
+            if (sum == frame_to_send[frame_len - 1]) {
+                /* Structurally plausible header: Keihin (0x68) or ISO 14230 (0x80..0xBF) */
+                if (frame_to_send[0] == 0x68 || (frame_to_send[0] & 0xC0) == 0x80) {
+                    valid = TRUE;
+                }
+            }
+        }
+
+        if (valid) {
+            log_message("[TUNE_FRAME] Candidate frame flushed on silence timeout (elapsed=%lu ms, len=%u): %s",
+                        (unsigned long)elapsed, frame_len, frame_hex);
+            dispatch_frame_locked(frame_to_send, frame_len);
+        } else {
+            log_message("[FRAME_DROP] Incomplete or checksum-invalid fragment dropped on silence timeout (elapsed=%lu ms, len=%u): %s",
+                        (unsigned long)elapsed, frame_len, frame_hex);
+        }
     }
 }
 
@@ -1245,7 +1330,7 @@ FT_STATUS WINAPI FT_Write(FT_HANDLE ftHandle, LPVOID lpBuffer,
 
         char frame_hex[256] = {0};
         format_hex_buffer(frame_to_send, frame_len > 64 ? 64 : frame_len, frame_hex, sizeof(frame_hex));
-        log_message("[FRAME_TX] Complete frame identified (len=%u): %s", frame_len, frame_hex);
+        log_message("[TUNE_FRAME] Complete frame from TuneECU (len=%u): %s", frame_len, frame_hex);
 
         dispatch_frame_locked(frame_to_send, frame_len);
     }
