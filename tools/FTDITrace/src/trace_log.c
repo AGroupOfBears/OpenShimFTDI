@@ -263,24 +263,23 @@ void ftditrace_log_shutdown(bool is_process_exit) {
     g_shutdown = true;
     if (g_log_event) SetEvent(g_log_event);
     
-    if (!is_process_exit) {
-        if (g_log_thread) {
-            WaitForSingleObject(g_log_thread, 2000);
-            CloseHandle(g_log_thread);
-            g_log_thread = NULL;
+    // Flush remaining queued events directly from caller thread
+    EnterCriticalSection(&g_queue_lock);
+    while (g_tail < g_head) {
+        ft_log_event_t ev = g_queue[g_tail % EVENT_QUEUE_SIZE];
+        g_tail++;
+        write_event(&ev);
+    }
+    LeaveCriticalSection(&g_queue_lock);
+
+    if (g_log_thread) {
+        if (!is_process_exit) {
+            // Terminate background worker thread before FreeLibrary unmaps DLL code,
+            // avoiding loader-lock deadlock in DllMain and execution of unmapped pages.
+            TerminateThread(g_log_thread, 0);
         }
-    } else {
-        EnterCriticalSection(&g_queue_lock);
-        while (g_tail < g_head) {
-            ft_log_event_t ev = g_queue[g_tail % EVENT_QUEUE_SIZE];
-            g_tail++;
-            write_event(&ev);
-        }
-        LeaveCriticalSection(&g_queue_lock);
-        if (g_log_thread) {
-            CloseHandle(g_log_thread);
-            g_log_thread = NULL;
-        }
+        CloseHandle(g_log_thread);
+        g_log_thread = NULL;
     }
     
     uint64_t stop_qpc = ftditrace_qpc();

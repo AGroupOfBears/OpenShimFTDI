@@ -55,21 +55,23 @@ Derived convenience integers `dur_ms` and `rel_ms` are also provided in each JSO
 
 ---
 
-## Safety & Installation Matrix (RB-1 Fix)
+## Safety & Installation Matrix
 
 The installation scripts `scripts/install-ftditrace.ps1` and `scripts/uninstall-ftditrace.ps1` strictly prevent overwriting or destroying genuine FTDI drivers:
 
 | Case | State of TuneECU Directory | Installer Action |
 |---|---|---|
-| **Case A** | Clean installation: `FTD2XX.dll` exists, `FTD2XX_REAL.dll` does NOT exist | **Safe Install**: Backs up original `FTD2XX.dll` to `FTD2XX_REAL.dll`, logs SHA-256 hashes, installs proxy `FTD2XX.dll`. |
-| **Case B** | FTDITrace already installed: Both `FTD2XX.dll` and `FTD2XX_REAL.dll` exist | **Refused**: Fails immediately without modifying any files to prevent overwriting genuine backup with proxy DLL. |
-| **Case C** | Incomplete state: Only `FTD2XX_REAL.dll` exists | **Refused**: Aborts to avoid operating on an inconsistent directory. |
-| **Case D** | Missing: Neither DLL exists | **Aborted**: Fails because no genuine D2XX installation was found. |
+| **Scenario B** (Real Baseline) | Clean Windows 11 installation: No local `FTD2XX.dll` or `FTD2XX_REAL.dll` (relies on `SysWOW64\ftd2xx.dll`) | **Safe Install**: Copies genuine 32-bit DLL from `SysWOW64\ftd2xx.dll` to `FTD2XX_REAL.dll` (SysWOW64 is NEVER modified), installs proxy `FTD2XX.dll`, writes `FTDITrace.install.json`. Uninstall removes both local DLLs and manifest, restoring clean SysWOW64 resolution. |
+| **Scenario A** (Local DLL) | Local genuine `FTD2XX.dll` exists, `FTD2XX_REAL.dll` does NOT exist | **Safe Install**: Preserves local genuine DLL as `FTD2XX_REAL.dll`, logs SHA-256 hashes, installs proxy `FTD2XX.dll`, writes `FTDITrace.install.json`. Uninstall restores original local DLL exactly. |
+| **Repeat Install** | FTDITrace already installed: `FTD2XX_REAL.dll` or `FTDITrace.install.json` exists | **Refused**: Aborts immediately with error to protect the immutable genuine backup. Zero files modified or deleted. |
+| **Incomplete / Corrupt** | Files exist but manifest is missing or damaged | **Refused**: Aborts safely without modifying files; requires manual recovery. |
 
 ### Parameters & Features
-- `-TuneECUDir <path>`: Target application directory (defaults to current directory).
-- `-ProxyDll <path>`: Source proxy DLL path (defaults to `.\FTD2XX.dll`).
+- `-TuneEcuDir <path>`: Target application directory (defaults to `C:\Users\xer0\Desktop\TuneECUv2.5.5`).
+- `-ProxyDll <path>`: Source proxy DLL path (defaults to package proxy).
+- `-RealD2xxPath <path>`: Source genuine 32-bit D2XX DLL (defaults to `$env:WINDIR\SysWOW64\ftd2xx.dll`).
 - `-WhatIf`: Supports PowerShell `-WhatIf` / `ShouldProcess` dry-run simulation without touching files.
+- **Architecture Validation**: Enforces 32-bit PE32 (i386 0x014c) binaries and rejects 64-bit binaries (e.g. `System32\ftd2xx.dll`).
 - **Driver Safety**: Does **NOT** modify `C:\Windows\System32`, `SysWOW64`, or FTDI INF drivers.
 
 ---
@@ -86,8 +88,9 @@ make clean all test
 Build outputs:
 - `FTD2XX.dll`: 32-bit PE32 proxy DLL exporting all 22 D2XX APIs.
 - `FTD2XX_REAL.dll`: Fake backend used for automated testing under Wine.
-- `test_ftditrace.exe`: Comprehensive 27-block test harness.
-- `test_negative.exe`: Negative testing verifying missing DLL handling.
+- `FTD2XX_MISSING_EXP.dll`: Test backend with omitted exports for negative testing.
+- `test_ftditrace.exe`: Comprehensive 46-item production test harness.
+- `test_negative.exe`: Negative testing verifying missing DLL and missing export handling.
 
 ---
 
