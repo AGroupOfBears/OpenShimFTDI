@@ -1,0 +1,24 @@
+LIBRARY FTD2XX
+EXPORTS
+    FT_CreateDeviceInfoList
+    FT_ListDevices
+    FT_Open
+    FT_OpenEx
+    FT_Close
+    FT_Read
+    FT_Write
+    FT_SetBaudRate
+    FT_SetDataCharacteristics
+    FT_SetFlowControl
+    FT_SetDtr
+    FT_ClrDtr
+    FT_SetRts
+    FT_ClrRts
+    FT_Purge
+    FT_SetTimeouts
+    FT_SetBreakOn
+    FT_SetBreakOff
+    FT_GetStatus
+    FT_SetEventNotification
+    FT_SetLatencyTimer
+    FT_SetUSBParameters
