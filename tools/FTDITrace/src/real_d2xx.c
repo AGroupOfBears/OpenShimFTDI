@@ -1,8 +1,9 @@
 #include "../include/ftditrace.h"
 #include <windows.h>
-#include <stdio.h>
 
 static HMODULE g_real_dll = NULL;
+static char g_real_dll_path[MAX_PATH] = {0};
+static char g_proxy_dll_path[MAX_PATH] = {0};
 
 FARPROC g_fn_FT_CreateDeviceInfoList = NULL;
 FARPROC g_fn_FT_ListDevices = NULL;
@@ -27,27 +28,43 @@ FARPROC g_fn_FT_SetEventNotification = NULL;
 FARPROC g_fn_FT_SetLatencyTimer = NULL;
 FARPROC g_fn_FT_SetUSBParameters = NULL;
 
+const char* ftditrace_get_real_dll_path(void) {
+    return g_real_dll_path;
+}
+
+const char* ftditrace_get_proxy_dll_path(void) {
+    return g_proxy_dll_path;
+}
+
 bool ftditrace_init_real_dll(void) {
     if (g_real_dll) return true;
     
-    char real_dll_path[MAX_PATH] = {0};
-    
-    if (GetEnvironmentVariableA("FTDITRACE_REAL_DLL", real_dll_path, MAX_PATH) == 0) {
-        char dll_path[MAX_PATH] = {0};
-        HMODULE hm = NULL;
-        if (GetModuleHandleEx(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | 
-            GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-            (LPCSTR)&ftditrace_init_real_dll, &hm)) {
-            GetModuleFileNameA(hm, dll_path, sizeof(dll_path));
-            char* last_slash = strrchr(dll_path, '\\');
+    // Obtain proxy DLL path
+    HMODULE hm = NULL;
+    if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | 
+        GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+        (LPCSTR)&ftditrace_init_real_dll, &hm)) {
+        GetModuleFileNameA(hm, g_proxy_dll_path, sizeof(g_proxy_dll_path));
+    }
+
+    if (GetEnvironmentVariableA("FTDITRACE_REAL_DLL", g_real_dll_path, MAX_PATH) == 0) {
+        if (g_proxy_dll_path[0] != '\0') {
+            char dir_path[MAX_PATH];
+            lstrcpynA(dir_path, g_proxy_dll_path, MAX_PATH);
+            char* last_slash = NULL;
+            int i = 0;
+            while (dir_path[i]) {
+                if (dir_path[i] == '\\' || dir_path[i] == '/') last_slash = &dir_path[i];
+                i++;
+            }
             if (last_slash) *last_slash = '\0';
-            wsprintfA(real_dll_path, "%s\\FTD2XX_REAL.dll", dll_path);
+            wsprintfA(g_real_dll_path, "%s\\FTD2XX_REAL.dll", dir_path);
         } else {
-            wsprintfA(real_dll_path, "FTD2XX_REAL.dll");
+            wsprintfA(g_real_dll_path, "FTD2XX_REAL.dll");
         }
     }
     
-    g_real_dll = LoadLibraryA(real_dll_path);
+    g_real_dll = LoadLibraryA(g_real_dll_path);
     if (!g_real_dll) return false;
     
     g_fn_FT_CreateDeviceInfoList = GetProcAddress(g_real_dll, "FT_CreateDeviceInfoList");
