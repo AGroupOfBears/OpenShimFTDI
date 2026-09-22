@@ -1,4 +1,4 @@
-# TuneECU FTD2XX shim v0.1.1
+# OpenShimFTDI: A TuneECU FTD2XX shim
 
 ## Preamble
 
