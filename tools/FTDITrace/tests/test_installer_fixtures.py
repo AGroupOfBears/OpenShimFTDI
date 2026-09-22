@@ -12,6 +12,84 @@ import tempfile
 import hashlib
 import json
 import struct
+import re
+
+def audit_powershell_script_parameters(script_path):
+    """
+    Statically audits PowerShell script parameter and alias declarations.
+    PowerShell parameter names and aliases are case-insensitive.
+    Detects:
+      1. Alias matching the parameter name (case-insensitively).
+      2. Alias matching another parameter name (case-insensitively).
+      3. Duplicate aliases across parameters.
+    """
+    if not os.path.exists(script_path):
+        return False, f"Script not found: {script_path}"
+    
+    with open(script_path, 'r', encoding='utf-8') as f:
+        content = f.read()
+        
+    idx = content.find("param")
+    if idx == -1:
+        return False, "Could not locate param block"
+    open_paren = content.find("(", idx)
+    if open_paren == -1:
+        return False, "Could not locate param(...) opening parenthesis"
+    depth = 1
+    i = open_paren + 1
+    while i < len(content) and depth > 0:
+        if content[i] == '(':
+            depth += 1
+        elif content[i] == ')':
+            depth -= 1
+        i += 1
+    if depth != 0:
+        return False, "Unbalanced parentheses in param(...) block"
+        
+    param_block = content[open_paren + 1 : i - 1]
+    param_entries = re.split(r',\s*(?=\[|\$)', param_block)
+    
+    params = {}
+    aliases = {}
+    
+    for entry in param_entries:
+        entry = entry.strip()
+        if not entry:
+            continue
+            
+        # Extract all [Alias(...)] before stripping attributes
+        alias_names = []
+        alias_matches = re.findall(r'\[Alias\s*\(\s*([^\]]+?)\s*\)\]', entry, re.IGNORECASE)
+        for am in alias_matches:
+            names = re.findall(r'["\']([^"\']+)["\']', am)
+            if not names:
+                names = [n.strip() for n in am.split(',') if n.strip()]
+            alias_names.extend(names)
+            
+        # Strip all attribute blocks [ ... ] so internal $false / $true are not matched as parameter names
+        stripped = re.sub(r'\[.*?\]', '', entry, flags=re.DOTALL)
+        var_match = re.search(r'\$([A-Za-z0-9_]+)', stripped)
+        if not var_match:
+            continue
+        param_name = var_match.group(1)
+        param_lower = param_name.lower()
+        
+        if param_lower in params:
+            return False, f"Duplicate parameter declaration: ${param_name}"
+        params[param_lower] = param_name
+        
+        for alias in alias_names:
+            alias_lower = alias.lower()
+            if alias_lower == param_lower:
+                return False, f"Collision: parameter '${param_name}' has alias '{alias}' that differs only by case or is identical"
+            if alias_lower in params:
+                return False, f"Collision: alias '{alias}' on parameter '${param_name}' collides with parameter '${params[alias_lower]}'"
+            if alias_lower in aliases:
+                prev_alias, prev_param = aliases[alias_lower]
+                return False, f"Duplicate alias '{alias}' on '${param_name}' already used as '{prev_alias}' on '${prev_param}'"
+            aliases[alias_lower] = (alias, param_name)
+                
+    return True, f"Valid ({len(params)} parameters, {len(aliases)} aliases)"
 
 def sha256_file(path):
     if not os.path.exists(path):
@@ -204,6 +282,38 @@ def run_tests():
         # Create mock 64-bit System32 DLL (PE32+)
         system32_dll = os.path.join(tmp, "mock_system32_ftd2xx.dll")
         create_mock_pe(system32_dll, is_64bit=True)
+        # --------------------------------------------------
+        # REGRESSION TEST: PowerShell Parameter Alias Collision
+        # --------------------------------------------------
+        # 1. Negative check: verify detector catches the exact RC1 bug (TuneEcuDir + Alias("TuneECUDir"))
+        mock_buggy_script = os.path.join(tmp, "buggy_installer.ps1")
+        with open(mock_buggy_script, 'w') as f:
+            f.write('''
+param(
+    [Parameter(Position = 0, Mandatory = $false)]
+    [Alias("TuneECUDir")]
+    [string]$TuneEcuDir = "C:\\\\TuneECU",
+    [Parameter(Position = 1, Mandatory = $false)]
+    [string]$ProxyDll
+)
+''')
+        ok_bug, msg_bug = audit_powershell_script_parameters(mock_buggy_script)
+        assert not ok_bug and "differs only by case" in msg_bug, f"Regression test failed to catch RC1 alias collision: {msg_bug}"
+        print("  [PASS] Regression: Case-insensitive alias collision (TuneEcuDir vs TuneECUDir) detected and failed as expected")
+
+        # 2. Positive check: verify production install-ftditrace.ps1
+        script_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "scripts"))
+        install_script = os.path.join(script_dir, "install-ftditrace.ps1")
+        uninstall_script = os.path.join(script_dir, "uninstall-ftditrace.ps1")
+
+        ok_inst, msg_inst = audit_powershell_script_parameters(install_script)
+        assert ok_inst, f"install-ftditrace.ps1 parameter audit failed: {msg_inst}"
+        print(f"  [PASS] install-ftditrace.ps1 parameter audit: {msg_inst}")
+
+        # 3. Positive check: verify production uninstall-ftditrace.ps1
+        ok_uninst, msg_uninst = audit_powershell_script_parameters(uninstall_script)
+        assert ok_uninst, f"uninstall-ftditrace.ps1 parameter audit failed: {msg_uninst}"
+        print(f"  [PASS] uninstall-ftditrace.ps1 parameter audit: {msg_uninst}")
 
         # --------------------------------------------------
         # SCENARIO B: Clean Baseline (The REAL Windows Setup)
